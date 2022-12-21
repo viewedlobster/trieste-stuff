@@ -1,4 +1,4 @@
-#include <trieste/driver>
+#include <trieste/driver.h>
 
 #include "lang.hh"
 
@@ -9,19 +9,27 @@
 
 namespace list
 {
-	Parse parser()
-	{
-		Parse p(depth::file);
-		auto indent = std::make_shared<std::vector<size_t>>();
+  Parse parser()
+  {
+    Parse p(depth::file);
+    auto indent = std::make_shared<std::vector<size_t>>();
 
-		p("start",
-			{
-			// whitespace
-			"[[:blank:]]+" >> [](auto&) {}, // no-op
+    p("start",
+      {
+        // whitespace
+        "[[:blank:]]+" >> [](auto&) {}, // no-op
 
-			"[" >> [](auto& m) { m.push(Bracket) }, // left bracket
+        // integers
+        "-?[[:digit:]]+" >> [](auto& m) { m.add(Integer); },
 
-			"]" >> [](auto& m) { m.pop(Bracket) },
-			}
-	}
+        // commas
+        "," >> [](auto& m) { m.seq(ListContents); },
+
+        // brackets
+        R"(\[)" >> [](auto& m) { m.push(List, 1); }, // left bracket
+
+        R"(\])" >> [](auto& m) { m.term({ListContents}); m.pop(List); }, // right bracket
+      });
+    return p;
+  }
 }
