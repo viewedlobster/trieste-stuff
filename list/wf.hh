@@ -19,4 +19,10 @@ namespace list
     | (ListContents <<= Group++)
     | (Group <<= wf_parse_token++)
     ;
+
+  inline constexpr auto wf_pass_cleanup =
+      (Top <<= Group)
+    | (List <<= Group++)
+    | (Group <<= wf_parse_token++)
+    ;
 }
