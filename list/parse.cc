@@ -17,7 +17,7 @@ namespace list
     p("start",
       {
         // whitespace
-        "[[:blank:]]+" >> [](auto&) {}, // no-op
+        "[[:space:]]+" >> [](auto&) {}, // no-op
 
         // integers
         "-?[[:digit:]]+" >> [](auto& m) { m.add(Integer); },

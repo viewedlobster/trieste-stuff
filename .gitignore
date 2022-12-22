@@ -35,4 +35,8 @@
 .vscode
 
 # Build directories
+build/
 list/build/
+
+# Mac stuff
+*/.DS_Store
