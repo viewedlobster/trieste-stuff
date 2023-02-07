@@ -2,11 +2,16 @@
 
 \usepackage{amsmath}
 
-\newcommand{\typerule}[3]{\frac{\begin{array}{c}#2\end{array}}{\begin{array}{c}#3\end{array}}{~\small\mbox{(\textsc{#1})}}}
+\newcommand{\rulename}{\textsc}
+\newcommand{\rn}{\rulename}
+
+\newcommand{\irule}[3]{\frac{\begin{array}{c}#2\end{array}}{\begin{array}{l}#3\end{array}}{~\small\mbox{(\rulename{#1})}}}
 
 \newcommand{\labelFont}{\texttt}
 
 \newcommand{\lbl}{\ensuremath{\mathit{lbl}}}
+\newcommand{\lbls}{\ensuremath{\mathit{lbls}}}
+\newcommand{\Top}{\ensuremath{\labelFont{Top}}}
 \newcommand{\Group}{\ensuremath{\labelFont{Group}}}
 \newcommand{\Invalid}{\ensuremath{\labelFont{Invalid}}}
 \newcommand{\Unclosed}{\ensuremath{\labelFont{Unclosed}}}
@@ -21,9 +26,11 @@
 \newcommand{\add}[1]{\ensuremath{\texttt{add}~#1}}
 \newcommand{\push}[1]{\ensuremath{\texttt{push}~#1}}
 \newcommand{\pop}[1]{\ensuremath{\texttt{pop}~#1}}
+\newcommand{\trypop}[1]{\ensuremath{\texttt{trypop}~#1}}
 \newcommand{\seq}[1]{\ensuremath{\texttt{seq}~#1}}
 \newcommand{\term}[1]{\ensuremath{\texttt{term}~#1}}
 \newcommand{\invalid}{\ensuremath{\texttt{invalid}}}
+\newcommand{\unclosed}{\ensuremath{\texttt{unclosed}}}
 \newcommand{\done}{\ensuremath{\texttt{done}}}
 
 \newcommand{\cursor}{\ensuremath{\downarrow}}
@@ -32,11 +39,14 @@
 
 \newcommand{\arrayheading}[2]{\multicolumn{#1}{l}{\mbox{#2}}}
 
+\synctex=1
+
 \begin{document}
 \[
   \begin{array}{rcl}
     \arrayheading{3}{Labels}\\
-    \lbl & \in & \{\Group, \Invalid, \Unclosed\}\cup \mathcal{L} \\
+    \lbl  & \in & \{\Top, \Group, \Invalid, \Unclosed\}\cup \mathcal{L} \\
+    \lbls & ::= & \lbl_1 .. \lbl_n\\
     \\
     \arrayheading{3}{Terms}\\
     \tm  & ::= & \lbl(\tms) \\
@@ -55,13 +65,15 @@
             & ~|~ & \push{\lbl}\\
             & ~|~ & \pop{\lbl}\\
             & ~|~ & \seq{\lbl}\\
-            & ~|~ & \term{\lbl}\\
+            & ~|~ & \term{\lbls}\\
+            & ~|~ & \trypop{\lbl}\\
             & ~|~ & \invalid\\
+            & ~|~ & \unclosed\\
             & ~|~ & \done\\
   \end{array}
 \]
 
-A term \tm{} is an $n$-ary tree where each node has a label \lbl{}.
+A term \tm{} is an $n$-ary tree where each node has a label \lbl.
 %
 During parsing, terms \Tm{} have a single cursor \cursor{} in them,
 always ``furthest to the right'' in the tree.
@@ -69,10 +81,11 @@ always ``furthest to the right'' in the tree.
 We use $\Tm[\bullet]$ to denote a term whose right-most child is a
 hole $\bullet$ that can be filled with a sequence of terms.
 
-We use the rule
+We use the rule \rn{ctx} to ``zoom in'' close enough to the cursor
+to apply a rule:
 
 \[
-\typerule{ctx}{
+\irule{ctx}{
 \Tm_1 \steps{\action} \Tm_2\\
 \action \notin \{\invalid, \done\}
 }{
@@ -80,65 +93,215 @@ We use the rule
 }
 \]
 
+The action \add{\lbl} will add a \lbl-node to a group and
+advance the cursor, creating a new group and moving inside it if
+the cursor is not already inside one:
+
 \[
   \begin{array}{c}
-    \typerule{add-in}{}{
+    \irule{add-in}{}{
     \Group(\Tms[\cursor]) \steps{\add{\lbl}} \Group(\Tms[lbl(\epsilon) \cursor])
-    }\\\\
-    \typerule{add-create}{
+    }
+    \\\\
+
+    \irule{add-create}{
     \lbl' \neq \Group
     }{
-    \lbl'(\Tms[\cursor]) \steps{\add{\lbl}} \lbl'(\Tms[\lbl(\epsilon) \cursor])
+    \lbl'(\Tms[\cursor]) \steps{\add{\lbl}} \lbl'(\Tms[\Group(\lbl(\epsilon) \cursor)])
     }
   \end{array}
 \]
 
+Pushing a label adds a node (creating a group if needed) and moves
+the cursor inside it:
+
 \[
   \begin{array}{c}
-    \typerule{push-in}{}{
+    \irule{push-in}{}{
     \Group(\Tms[\cursor]) \steps{\push{\lbl}} \Group(\Tms[\lbl(\cursor)])
-    }\\\\
-    \typerule{push-create}{
+    }
+    \\\\
+
+    \irule{push-create}{
     \lbl' \neq \Group
     }{
     \lbl'(\Tms[\cursor]) \steps{\push{\lbl}} \lbl'(\Tms[\Group(\lbl(\cursor))])
-    }\\\\
+    }
   \end{array}
 \]
 
+The action \pop{\lbl} moves the cursor out of the innermost node,
+assuming its label is \lbl. If the label does not match, an
+error is reported (defined below):
+
 \[
   \begin{array}{c}
-    \typerule{pop-ok}{}{
-    \lbl'(\Tms[\lbl(\Tms'[\cursor])]) \steps{\pop{\lbl}}
-    \lbl'(\Tms[\lbl(\Tms'[\epsilon])~\cursor])
-    }\\\\
-    \typerule{pop-fail}{
-    \lbl'' \neq \lbl
+    \irule{pop-ok}{
+    \lbl'(\Tms[\lbl(\Tms'[\cursor])]) \steps{\trypop{\lbl}} \Tm
+    }{
+    \lbl'(\Tms[\lbl(\Tms'[\cursor])]) \steps{\pop{\lbl}} \Tm
+    }
+    \\\\
+
+    \irule{pop-fail}{
+    \lbl'' \neq \lbl\\
+    \lbl''(\Tms'[\cursor]) \steps{\invalid} \Tm
     }{
     \lbl'(\Tms[\lbl''(\Tms'[\cursor])]) \steps{\pop{\lbl}}
-    \lbl'(\Tms[\lbl''(\Tms'[\Invalid~\cursor])])
-    }\\\\
+    \lbl'(\Tms[\Tm])
+    }
   \end{array}
 \]
 
+Popping is done via an auxiliary action \trypop{\lbl} which does
+nothing on a label mismatch:
+
 \[
   \begin{array}{c}
-    \typerule{seq-in}{}{
+    \irule{trypop-ok}{}{
+    \lbl'(\Tms[\lbl(\Tms'[\cursor])]) \steps{\trypop{\lbl}}
+    \lbl'(\Tms[\lbl(\Tms'[\epsilon])~\cursor])
+    }
+    \\\\
+    \irule{trypop-fail}{
+    \lbl'' \neq \lbl
+    }{
+    \lbl'(\Tms[\lbl''(\Tms'[\cursor])]) \steps{\trypop{\lbl}}
+    \lbl'(\Tms[\lbl''(\Tms'[\cursor])])
+    }
+  \end{array}
+\]
+
+Errors are reported by adding a node with the label \Invalid. If
+the cursor is already next to an \Invalid-node, the extent of
+that error is extended (currently just modeled as a no-op) rather
+than adding another \Invalid-node:
+
+\[
+  \begin{array}{c}
+    \irule{invalid-extend}{}{
+    \lbl(\Tms[\Invalid(\epsilon)~\cursor]) \steps{\invalid}
+    \lbl(\Tms[\Invalid(\epsilon)~\cursor])
+    }
+    \\\\
+
+    \irule{invalid-empty}{
+    \lbl(\cursor) \steps{\add{\Invalid}} \Tm
+    }{
+    \lbl(\cursor) \steps{\invalid} \Tm
+    }
+    \\\\
+
+    \irule{invalid-non-empty}{
+    \lbl' \neq \Invalid\\
+    \lbl(\Tms[\lbl'(\Tms') \cursor]) \steps{\add{\Invalid}} \Tm
+    }{
+    \lbl(\Tms[\lbl'(\Tms') \cursor]) \steps{\invalid} \Tm
+    }
+  \end{array}
+\]
+
+The action \seq{\lbl} finishes the current group and makes it a
+child of a \lbl-node, creating that node if it is not the parent
+of the current group. Performing the \seq{}-action when not in a
+group is an error:
+
+\[
+  \begin{array}{c}
+    \irule{seq-in}{}{
     \lbl(\Tms[\Group(\Tms'[\cursor])]) \steps{\seq{\lbl}}
     \lbl(\Tms[\Group(\Tms'[\epsilon])~\cursor])
     }\\\\
-    \typerule{seq-create}{
+    \irule{seq-create}{
     \lbl' \neq \lbl
     }{
     \lbl'(\Tms[\Group(\Tms'[\cursor])]) \steps{\seq{\lbl}}
     \lbl'(\Tms[\lbl(\Group(\Tms'[\epsilon])~\cursor)])
     }\\\\
-    \typerule{seq-fail}{
+    \irule{seq-fail}{
+    \lbl' \neq \Group\\
+    \lbl'(\Tms[\cursor]) \steps{\invalid{}} \Tm{}
+    }{
+    \lbl'(\Tms[\cursor]) \steps{\seq{\lbl}} \Tm{}
+    }\\\\
+  \end{array}
+\]
+
+The action \term{\lbls} finishes the current group (if any) and
+tries to move out of enclosing nodes in the order of the labels in
+\lbls, ignoring any non-matching labels. Note that this rule may
+use the \rn{ctx} rule to find the right level for popping.
+
+\[
+  \begin{array}{c}
+    \irule{term}{
+    \Tm \steps{\trypop{\Group}} \Tm_0\\
+    \forall~i\in[1..n]. \Tm_{i-1} \steps{\trypop{\lbl_i}} \Tm_i
+%    \lbl_2(\Tms_2[\lbl_3(\Tms_3[\cursor])]) \steps{\trypop{\Group}} \Tm\\
+%    \lbl_1(\Tms_1[\Tm]) \steps{\trypop{\lbl}} \Tm'
+    }{
+    \Tm \steps{\term{\lbl_1..\lbl_n}} \Tm_n
+%    \lbl_1(\Tms_1[\lbl_2(\Tms_2[\lbl_3(\Tms_3[\cursor])])]) \steps{\term{\lbl}}
+%    \Tm'
+    }
+  \end{array}
+\]
+
+Finally, the \done{} action finishes the final group (if any) and
+closes the top-most node, which must have label \Top{} (As an aside,
+note that we can't use \trypop{\Group} as \trypop{} assumes that
+the cursor is at least at depth 2, which is not true when the
+cursor a direct child of the top node). Note that the resulting
+node is a term without a cursor.
+
+\[
+  \begin{array}{c}
+    \irule{done}{}{
+    \Top(\Tms[\cursor]) \steps{\done} \Top(\Tms[\epsilon])
+    }
+    \\\\
+    \irule{done-group}{}{
+    \Top(\Tms[\Group(\Tms'[\cursor])]) \steps{\done} \Top(\Tms[\Group(\Tms'[\epsilon])])
+    }
+  \end{array}
+\]
+
+If the cursor is \emph{not} a direct child of the top node (or in
+a group that is a direct child of the top node), parsing has
+terminated prematurely and we add \Unclosed{} nodes along the path
+to the top until we can finish the term:
+
+\[
+  \begin{array}{c}
+    \irule{done-unclosed}{
+    \lbl \neq \Group\\
+    \Top(\Tms[\lbl(\Tms')]) \steps{\unclosed} \tm\\
+    }{
+    \Top(\Tms[\lbl(\Tms')]) \steps{\done} \tm
+    }
+    \\\\
+    \irule{unclosed-top}{}{
+    \Top(\Tms[\cursor]) \steps{\unclosed} \Top(\Tms[\Unclosed])
+    }
+    \\\\
+    \irule{unclosed-step}{
+    \Tm \steps{\unclosed} \Tm'\\
+    \Tm' \steps{\unclosed} \tm
+    }{
+    \Tm \steps{\unclosed} \tm
+    }
+    \\\\
+    \irule{unclosed-add}{
     \lbl' \neq \Group
     }{
-    \lbl'(\Tms[\cursor]) \steps{\seq{\lbl}}
-    \lbl'(\Tms[\Invalid~\cursor])
-    }\\\\
+    \lbl(\Tms[\lbl'(\Tms'[\cursor])]) \steps{\unclosed}\\
+    \lbl(\Tms[\lbl'(\Tms'[\Unclosed]) \cursor])
+    }
+    \\\\
+    \irule{unclosed-group}{}{
+    \lbl(\Tms[\lbl'(\Tms'[\Group(\Tms''[\cursor])])]) \steps{\unclosed}\\
+    \lbl(\Tms[\lbl'(\Tms'[\Group(\Tms''[\epsilon]) ~ \Unclosed]) \cursor])
+    }
   \end{array}
 \]
 
