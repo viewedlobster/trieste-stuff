@@ -42,6 +42,9 @@
 \synctex=1
 
 \begin{document}
+
+\section{Parsing in Trieste}
+
 \[
   \begin{array}{rcl}
     \arrayheading{3}{Labels}\\
@@ -49,15 +52,15 @@
     \lbls & ::= & \lbl_1 .. \lbl_n\\
     \\
     \arrayheading{3}{Terms}\\
-    \tm  & ::= & \lbl(\tms) \\
+    \tm  & ::= & (\lbl~\tms) \\
     \tms & ::= & \tm ~ \tms ~|~ \epsilon \\
     \\
     \arrayheading{3}{Terms with a single cursor}\\
-    \Tm  & ::= & \lbl(\Tms)\\
+    \Tm  & ::= & (\lbl~\Tms)\\
     \Tms & ::= & \tm ~ \Tms ~|~ \Tm ~|~ \cursor\\
     \\
     \arrayheading{3}{Contexts (shallow)}\\
-    \Tm[\bullet] & ::= & \lbl(\Tms[\bullet])\\
+    \Tm[\bullet] & ::= & (\lbl~\Tms[\bullet])\\
     \Tms[\bullet] & ::= & \tm ~ \Tms[\bullet] ~|~ \bullet\\
     \\
     \arrayheading{3}{Actions}\\
@@ -82,12 +85,15 @@ We use $\Tm[\bullet]$ to denote a term whose right-most child is a
 hole $\bullet$ that can be filled with a sequence of terms.
 
 We use the rule \rn{ctx} to ``zoom in'' close enough to the cursor
-to apply a rule:
+to apply a rule. Actions \term{} and \done{} are always applied to
+the whole term and are therefore excluded from being applied in a
+context:
+
 
 \[
 \irule{ctx}{
 \Tm_1 \steps{\action} \Tm_2\\
-\action \notin \{\invalid, \done\}
+\action \notin \{\term, \done\}
 }{
 \Tm[\Tm_1] \steps{\action} \Tm[\Tm_2]
 }
@@ -100,14 +106,14 @@ the cursor is not already inside one:
 \[
   \begin{array}{c}
     \irule{add-in}{}{
-    \Group(\Tms[\cursor]) \steps{\add{\lbl}} \Group(\Tms[lbl(\epsilon) \cursor])
+    (\Group~\Tms[\cursor]) \steps{\add{\lbl}} (\Group~\Tms[(\lbl) \cursor])
     }
     \\\\
 
     \irule{add-create}{
     \lbl' \neq \Group
     }{
-    \lbl'(\Tms[\cursor]) \steps{\add{\lbl}} \lbl'(\Tms[\Group(\lbl(\epsilon) \cursor)])
+    (\lbl'~\Tms[\cursor]) \steps{\add{\lbl}} (\lbl'~\Tms[(\Group~(\lbl) \cursor)])
     }
   \end{array}
 \]
@@ -118,14 +124,14 @@ the cursor inside it:
 \[
   \begin{array}{c}
     \irule{push-in}{}{
-    \Group(\Tms[\cursor]) \steps{\push{\lbl}} \Group(\Tms[\lbl(\cursor)])
+    (\Group~\Tms[\cursor]) \steps{\push{\lbl}} (\Group~\Tms[(\lbl~\cursor)])
     }
     \\\\
 
     \irule{push-create}{
     \lbl' \neq \Group
     }{
-    \lbl'(\Tms[\cursor]) \steps{\push{\lbl}} \lbl'(\Tms[\Group(\lbl(\cursor))])
+    (\lbl'~\Tms[\cursor]) \steps{\push{\lbl}} (\lbl'~\Tms[(\Group~(\lbl~\cursor))])
     }
   \end{array}
 \]
@@ -137,18 +143,18 @@ error is reported (defined below):
 \[
   \begin{array}{c}
     \irule{pop-ok}{
-    \lbl'(\Tms[\lbl(\Tms'[\cursor])]) \steps{\trypop{\lbl}} \Tm
+    (\lbl'~\Tms[(\lbl~\Tms'[\cursor])]) \steps{\trypop{\lbl}} \Tm
     }{
-    \lbl'(\Tms[\lbl(\Tms'[\cursor])]) \steps{\pop{\lbl}} \Tm
+    (\lbl'~\Tms[(\lbl~\Tms'[\cursor])]) \steps{\pop{\lbl}} \Tm
     }
     \\\\
 
     \irule{pop-fail}{
     \lbl'' \neq \lbl\\
-    \lbl''(\Tms'[\cursor]) \steps{\invalid} \Tm
+    (\lbl''~\Tms'[\cursor]) \steps{\invalid} \Tm
     }{
-    \lbl'(\Tms[\lbl''(\Tms'[\cursor])]) \steps{\pop{\lbl}}
-    \lbl'(\Tms[\Tm])
+    (\lbl'~\Tms[(\lbl''~\Tms'[\cursor])]) \steps{\pop{\lbl}}
+    (\lbl'~\Tms[\Tm])
     }
   \end{array}
 \]
@@ -159,15 +165,15 @@ nothing on a label mismatch:
 \[
   \begin{array}{c}
     \irule{trypop-ok}{}{
-    \lbl'(\Tms[\lbl(\Tms'[\cursor])]) \steps{\trypop{\lbl}}
-    \lbl'(\Tms[\lbl(\Tms'[\epsilon])~\cursor])
+    (\lbl'~\Tms[(\lbl~\Tms'[\cursor])]) \steps{\trypop{\lbl}}
+    (\lbl'~\Tms[(\lbl~\Tms'[\epsilon])~\cursor])
     }
     \\\\
     \irule{trypop-fail}{
     \lbl'' \neq \lbl
     }{
-    \lbl'(\Tms[\lbl''(\Tms'[\cursor])]) \steps{\trypop{\lbl}}
-    \lbl'(\Tms[\lbl''(\Tms'[\cursor])])
+    (\lbl'~\Tms[(\lbl''~\Tms'[\cursor])]) \steps{\trypop{\lbl}}
+    (\lbl'~\Tms[(\lbl''~\Tms'[\cursor])])
     }
   \end{array}
 \]
@@ -180,23 +186,23 @@ than adding another \Invalid-node:
 \[
   \begin{array}{c}
     \irule{invalid-extend}{}{
-    \lbl(\Tms[\Invalid(\epsilon)~\cursor]) \steps{\invalid}
-    \lbl(\Tms[\Invalid(\epsilon)~\cursor])
+    (\lbl~\Tms[(\Invalid)~\cursor]) \steps{\invalid}
+    (\lbl~\Tms[(\Invalid)~\cursor])
     }
     \\\\
 
     \irule{invalid-empty}{
-    \lbl(\cursor) \steps{\add{\Invalid}} \Tm
+    (\lbl~\cursor) \steps{\add{\Invalid}} \Tm
     }{
-    \lbl(\cursor) \steps{\invalid} \Tm
+    (\lbl~\cursor) \steps{\invalid} \Tm
     }
     \\\\
 
     \irule{invalid-non-empty}{
     \lbl' \neq \Invalid\\
-    \lbl(\Tms[\lbl'(\Tms') \cursor]) \steps{\add{\Invalid}} \Tm
+    (\lbl~\Tms[(\lbl'~\Tms') \cursor]) \steps{\add{\Invalid}} \Tm
     }{
-    \lbl(\Tms[\lbl'(\Tms') \cursor]) \steps{\invalid} \Tm
+    (\lbl~\Tms[(\lbl'~\Tms') \cursor]) \steps{\invalid} \Tm
     }
   \end{array}
 \]
@@ -209,20 +215,20 @@ group is an error:
 \[
   \begin{array}{c}
     \irule{seq-in}{}{
-    \lbl(\Tms[\Group(\Tms'[\cursor])]) \steps{\seq{\lbl}}
-    \lbl(\Tms[\Group(\Tms'[\epsilon])~\cursor])
+    (\lbl~\Tms[(\Group~\Tms'[\cursor])]) \steps{\seq{\lbl}}
+    (\lbl~\Tms[(\Group~\Tms'[\epsilon])~\cursor])
     }\\\\
     \irule{seq-create}{
     \lbl' \neq \lbl
     }{
-    \lbl'(\Tms[\Group(\Tms'[\cursor])]) \steps{\seq{\lbl}}
-    \lbl'(\Tms[\lbl(\Group(\Tms'[\epsilon])~\cursor)])
+    (\lbl'~\Tms[(\Group~\Tms'[\cursor])]) \steps{\seq{\lbl}}
+    (\lbl'~\Tms[(\lbl~(\Group~\Tms'[\epsilon])~\cursor)])
     }\\\\
     \irule{seq-fail}{
     \lbl' \neq \Group\\
-    \lbl'(\Tms[\cursor]) \steps{\invalid{}} \Tm{}
+    (\lbl'~\Tms[\cursor]) \steps{\invalid} \Tm{}
     }{
-    \lbl'(\Tms[\cursor]) \steps{\seq{\lbl}} \Tm{}
+    (\lbl'~\Tms[\cursor]) \steps{\seq{\lbl}} \Tm{}
     }\\\\
   \end{array}
 \]
@@ -257,11 +263,11 @@ node is a term without a cursor.
 \[
   \begin{array}{c}
     \irule{done}{}{
-    \Top(\Tms[\cursor]) \steps{\done} \Top(\Tms[\epsilon])
+    (\Top~\Tms[\cursor]) \steps{\done} (\Top~\Tms[\epsilon])
     }
     \\\\
     \irule{done-group}{}{
-    \Top(\Tms[\Group(\Tms'[\cursor])]) \steps{\done} \Top(\Tms[\Group(\Tms'[\epsilon])])
+    (\Top~\Tms[(\Group~\Tms'[\cursor])]) \steps{\done} (\Top~\Tms[(\Group~\Tms'[\epsilon])])
     }
   \end{array}
 \]
@@ -275,13 +281,13 @@ to the top until we can finish the term:
   \begin{array}{c}
     \irule{done-unclosed}{
     \lbl \neq \Group\\
-    \Top(\Tms[\lbl(\Tms')]) \steps{\unclosed} \tm\\
+    (\Top~\Tms[(\lbl~\Tms')]) \steps{\unclosed} \tm\\
     }{
-    \Top(\Tms[\lbl(\Tms')]) \steps{\done} \tm
+    (\Top~\Tms[(\lbl~\Tms')]) \steps{\done} \tm
     }
     \\\\
     \irule{unclosed-top}{}{
-    \Top(\Tms[\cursor]) \steps{\unclosed} \Top(\Tms[\Unclosed])
+    (\Top~\Tms[\cursor]) \steps{\unclosed} \Top(\Tms[(\Unclosed)])
     }
     \\\\
     \irule{unclosed-step}{
@@ -294,13 +300,13 @@ to the top until we can finish the term:
     \irule{unclosed-add}{
     \lbl' \neq \Group
     }{
-    \lbl(\Tms[\lbl'(\Tms'[\cursor])]) \steps{\unclosed}\\
-    \lbl(\Tms[\lbl'(\Tms'[\Unclosed]) \cursor])
+    (\lbl~\Tms[(\lbl'~\Tms'[\cursor])]) \steps{\unclosed}\\
+    (\lbl~\Tms[(\lbl'~\Tms'[(\Unclosed)]) \cursor])
     }
     \\\\
     \irule{unclosed-group}{}{
-    \lbl(\Tms[\lbl'(\Tms'[\Group(\Tms''[\cursor])])]) \steps{\unclosed}\\
-    \lbl(\Tms[\lbl'(\Tms'[\Group(\Tms''[\epsilon]) ~ \Unclosed]) \cursor])
+    (\lbl~\Tms[(\lbl'~\Tms'[(\Group~\Tms''[\cursor])])]) \steps{\unclosed}\\
+    (\lbl~\Tms[(\lbl'~\Tms'[(\Group~\Tms''[\epsilon]) ~ (\Unclosed)]) \cursor])
     }
   \end{array}
 \]
