@@ -1,6 +1,7 @@
 \documentclass{article}
 
-\usepackage{amsmath}
+\usepackage{amsmath, amssymb}
+\usepackage[usenames,dvipsnames]{xcolor}
 
 \newcommand{\rulename}{\textsc}
 \newcommand{\rn}{\rulename}
@@ -8,6 +9,7 @@
 \newcommand{\irule}[3]{\frac{\begin{array}{c}#2\end{array}}{\begin{array}{l}#3\end{array}}{~\small\mbox{(\rulename{#1})}}}
 
 \newcommand{\labelFont}{\texttt}
+\newcommand{\cursorColor}{LimeGreen}
 
 \newcommand{\lbl}{\ensuremath{\mathit{lbl}}}
 \newcommand{\lbls}{\ensuremath{\mathit{lbls}}}
@@ -22,6 +24,14 @@
 \newcommand{\Tm}{\ensuremath{\check{\tm}}}
 \newcommand{\Tms}{\ensuremath{\check{\tms}}}
 
+\newcommand{\Tmc}{\ensuremath{\overset{ \textcolor{\cursorColor}{\bowtie}}{\tm}}}
+\newcommand{\Tmcb}{\ensuremath{\overset{{\bowtie}}{\tm}}}
+\newcommand{\Tmcs}{\ensuremath{\overset{\textcolor{\cursorColor}{\bowtie}}{\tms}}}
+
+\newcommand{\Tmm}{\ensuremath{\tilde{\tm}}}
+\newcommand{\Tmms}{\ensuremath{\tilde{\tms}}}
+
+%% Actions
 \newcommand{\action}{\ensuremath{\alpha}}
 \newcommand{\add}[1]{\ensuremath{\texttt{add}~#1}}
 \newcommand{\push}[1]{\ensuremath{\texttt{push}~#1}}
@@ -33,9 +43,35 @@
 \newcommand{\unclosed}{\ensuremath{\texttt{unclosed}}}
 \newcommand{\done}{\ensuremath{\texttt{done}}}
 
+%% Cursors and matching
 \newcommand{\cursor}{\ensuremath{\downarrow}}
+\newcommand{\mstart}{\ensuremath{\textcolor{\cursorColor}{\rhd}}}
+\newcommand{\mend}{\ensuremath{\textcolor{\cursorColor}{\lhd}}}
+
+\newcommand{\select}[1]{\mstart\colorbox{\cursorColor}{$#1$}\mend}
 
 \newcommand{\steps}[1]{\ensuremath{\xrightarrow{#1}}}
+\newcommand{\matches}[3]{\ensuremath{#1 \vdash #2 \Rightarrow #3}}
+\newcommand{\xmatches}[3]{\ensuremath{
+    \begin{array}{rl}
+      #1 \vdash & #2 \Rightarrow\\
+                & #3
+    \end{array}}}
+
+%% Patterns
+\newcommand{\pseq}[2]{\ensuremath{#1 \cdot #2}}
+\newcommand{\por}[2]{\ensuremath{#1/#2}}
+\newcommand{\children}[2]{\ensuremath{#1} \Downarrow #2}
+\newcommand{\pnot}[1]{\ensuremath{\lnot #1}}
+\newcommand{\maybe}[1]{\ensuremath{#1?}}
+\newcommand{\many}[1]{\ensuremath{#1^*}}
+\newcommand{\any}{\ensuremath{\text{\underline{\hspace{0.6em}}}}}
+\newcommand{\bind}[2]{\ensuremath{#1@#2}}
+\newcommand{\fb}[1]{\ensuremath{\rightarrow(#1)}}
+\newcommand{\nfb}[1]{\ensuremath{\not\rightarrow(#1)}}
+\newcommand{\pin}[1]{\ensuremath{\mathit{In}(#1)}}
+\newcommand{\pstart}{\ensuremath{\mathit{Start}}}
+\newcommand{\pend}{\ensuremath{\mathit{End}}}
 
 \newcommand{\arrayheading}[2]{\multicolumn{#1}{l}{\mbox{#2}}}
 
@@ -67,7 +103,7 @@
     \action & ::= & \add{\lbl}\\
             & ~|~ & \push{\lbl}\\
             & ~|~ & \pop{\lbl}\\
-            & ~|~ & \seq{\lbl}\\
+            & ~|~ & \pseq{\lbl}\\
             & ~|~ & \term{\lbls}\\
             & ~|~ & \trypop{\lbl}\\
             & ~|~ & \invalid\\
@@ -99,7 +135,7 @@ context:
 }
 \]
 
-The action \add{\lbl} will add a \lbl-node to a group and
+The action \add{\lbl} will add a \lbl-term to a group and
 advance the cursor, creating a new group and moving inside it if
 the cursor is not already inside one:
 
@@ -118,7 +154,7 @@ the cursor is not already inside one:
   \end{array}
 \]
 
-Pushing a label adds a node (creating a group if needed) and moves
+Pushing a label adds a term (creating a group if needed) and moves
 the cursor inside it:
 
 \[
@@ -136,7 +172,7 @@ the cursor inside it:
   \end{array}
 \]
 
-The action \pop{\lbl} moves the cursor out of the innermost node,
+The action \pop{\lbl} moves the cursor out of the innermost term,
 assuming its label is \lbl. If the label does not match, an
 error is reported (defined below):
 
@@ -178,10 +214,10 @@ nothing on a label mismatch:
   \end{array}
 \]
 
-Errors are reported by adding a node with the label \Invalid. If
-the cursor is already next to an \Invalid-node, the extent of
+Errors are reported by adding a term with the label \Invalid. If
+the cursor is already next to an \Invalid-term, the extent of
 that error is extended (currently just modeled as a no-op) rather
-than adding another \Invalid-node:
+than adding another \Invalid-term:
 
 \[
   \begin{array}{c}
@@ -208,7 +244,7 @@ than adding another \Invalid-node:
 \]
 
 The action \seq{\lbl} finishes the current group and makes it a
-child of a \lbl-node, creating that node if it is not the parent
+child of a \lbl-term, creating that term if it is not the parent
 of the current group. Performing the \seq{}-action when not in a
 group is an error:
 
@@ -234,7 +270,7 @@ group is an error:
 \]
 
 The action \term{\lbls} finishes the current group (if any) and
-tries to move out of enclosing nodes in the order of the labels in
+tries to move out of enclosing terms in the order of the labels in
 \lbls, ignoring any non-matching labels. Note that this rule may
 use the \rn{ctx} rule to find the right level for popping.
 
@@ -254,11 +290,11 @@ use the \rn{ctx} rule to find the right level for popping.
 \]
 
 Finally, the \done{} action finishes the final group (if any) and
-closes the top-most node, which must have label \Top{} (As an aside,
+closes the top-most term, which must have label \Top{} (As an aside,
 note that we can't use \trypop{\Group} as \trypop{} assumes that
 the cursor is at least at depth 2, which is not true when the
-cursor a direct child of the top node). Note that the resulting
-node is a term without a cursor.
+cursor a direct child of the top term). Note that the resulting
+term is a term without a cursor.
 
 \[
   \begin{array}{c}
@@ -274,7 +310,7 @@ node is a term without a cursor.
 
 If the cursor is \emph{not} a direct child of the top node (or in
 a group that is a direct child of the top node), parsing has
-terminated prematurely and we add \Unclosed{} nodes along the path
+terminated prematurely and we add \Unclosed{} terms along the path
 to the top until we can finish the term:
 
 \[
@@ -310,5 +346,326 @@ to the top until we can finish the term:
     }
   \end{array}
 \]
+
+\section{Pattern Matching}
+
+\[
+  \begin{array}{rcl}
+    \arrayheading{3}{Terms with a sequence being matched}\\
+    \Tmc & ::= & (\lbl~\Tmcs) ~|~ (\lbl~\tms~\select{\Tmms}~\tms)\\
+    \Tmcs & ::= & \Tmc ~ \tms ~|~ \tm ~ \Tmcs\\
+    \\
+    \arrayheading{3}{Contexts (shallow)}\\
+    \Tmc[\bullet] & ::= & (\lbl~\Tmcs[\bullet])\\
+    \Tmcs[\bullet] & ::= & \bullet ~ \tms ~|~ \tm ~ \Tmcs[\bullet]\\
+    \\
+    \arrayheading{3}{Selected terms}\\
+    \Tmm & ::= & (\lbl~\Tmms)\\
+    \Tmms & ::= & \Tmm~\Tmms ~|~ \Tmms~\Tmms ~|~ [\Tmms]@x ~|~ \epsilon\\
+    \\
+    \multicolumn{3}{l}{
+    \begin{array}{crll}
+      \arrayheading{4}{Patterns}\\
+      p & ::= & \lbl & \text{a term with label $\lbl$}\\
+        & ~|~ & \pseq{p}{p} & \text{sequence}\\
+        & ~|~ & \por{p}{p} & \text{choice}\\
+        & ~|~ & \children{p}{p} & \text{with children}\\
+        & ~|~ & \pnot{p} & \text{negation}\\
+        & ~|~ & \maybe{p} & \text{option}\\
+        & ~|~ & \many{p} & \text{repetition}\\
+        & ~|~ & \any{} & \text{any term}\\
+        & ~|~ & \bind{p}{x} & \text{bind}\\
+        & ~|~ & \fb{p} & \text{followed by}\\
+        & ~|~ & \nfb{p} & \text{not followed by}\\
+        & ~|~ & \pin{\lbl} & \text{appears as child of}\\
+        & ~|~ & \pstart{} & \text{before all children}\\
+        & ~|~ & \pend{} & \text{after all children}\\
+    \end{array}
+    }
+  \end{array}
+\]
+
+During matching we are selecting a sequence of sibling terms. A
+term \Tmc{} is a term where one such sequence has been selected.
+We represent the subterm whose children are being matched as
+$(\lbl~\tms_{pre}~\select{\Tmms}~\tms_{post})$: a $\lbl$ term
+where some subsequence $\Tmms$ of its children has been selected,
+$\tms_{pre}$ being the terms before the match and $\tms_{post}$
+the terms after the match. Matching commences by looking at terms
+in $\tms_{post}$ and moving them into the matched sequence, or
+equivalently, advancing the cursor $\mend$. Note that the coloring
+has no semantic meaning.
+%
+Selected terms $\Tmms$ can contain subsequences which may be bound
+to names $x$.
+
+Patterns match on labels $\lbl$ (with $\any$ matching any label),
+and can be combined in several ways:
+
+\begin{itemize}
+\item $\pseq{p_1}{p_2}$     --- $p_1$ followed by $p_2$
+\item $\por{p_1}{p_2}$      --- $p_1$ or $p_2$
+\item $\children{p_1}{p_2}$ --- $p_1$ with children matching $p_2$
+\item $\pnot{p}$            --- not $p$
+\item $\maybe{p}$           --- optionally $p$
+\item $\many{p}$            --- zero or more $p$
+\end{itemize}
+
+We can bind the result of matching a subpattern to a name with
+the pattern $\bind{p}{x}$. There are also a number of patterns
+which do not advance the cursor:
+
+\begin{itemize}
+\item $\fb{p}$     --- followed by $p$
+\item $\nfb{p}$    --- not followed by $p$
+\item $\pin{\lbl}$ --- inside a node with label $\lbl$
+\item $\pstart{}$  --- before all children of the current term
+\item $\pend{}$    --- after all children of the current term
+\end{itemize}
+
+Almost all rules look at the subterm whose children we are
+matching on. As with parsing, we use contexts to ``zoom in'' until
+we can apply a matching rule:
+
+\[
+  \begin{array}{c}
+    \irule{match-ctx}{
+    \matches{p}{\Tmc_1}{\Tmc_2}
+    }{
+    \matches{p}{\Tmc[\Tmc_1]}{\Tmc[\Tmc_2]}
+    }
+  \end{array}
+\]
+
+Throughout, we use $\lbl_\pi$ as the label of the parent of the
+nodes we are matching on.
+%
+\pstart{} and \pend{} match the very start and the very end
+respectively of the full sequence of children:
+
+\[
+  \begin{array}{c}
+    \irule{match-start}{}{
+    \matches{\pstart}
+    {(\lbl_\pi~\mstart\mend~\tms_{post})}
+    {(\lbl_\pi~\mstart\mend~\tms_{post})}
+    }
+    \\\\
+    \irule{match-end}{}{
+    \xmatches{\pend}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms})}
+    }
+  \end{array}
+\]
+
+$\pin{\lbl}$ succeeds if we are matching directly inside a $\lbl$
+term:
+
+\[
+  \begin{array}{c}
+    \irule{match-in}{}{
+    \xmatches{\pin{\lbl_\pi}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    }
+  \end{array}
+\]
+
+The lookahead patterns $\fb{p}$ and $\nfb{p}$ tries the pattern
+$p$ but does not advance the cursor
+
+\[
+  \begin{array}{c}
+    \irule{match-followed-by}{
+    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc}
+    }{
+    \xmatches{\fb{p}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    }
+    \\\\
+    \irule{match-not-followed-by}{
+    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc})
+    }{
+    \xmatches{\nfb{p}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    }
+  \end{array}
+\]
+
+Matching on a label $\lbl$ succeeds if it is the next label.
+Matching on a wild-card always succeeds as long as there is a term
+to match on:
+
+\[
+  \begin{array}{c}
+    \irule{match-label}{}{
+    \xmatches{\lbl}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~(\lbl~\tms')~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms~(\lbl~\tms')}~\tms_{post})}
+    }
+    \\\\
+    \irule{match-any}{}{
+    \xmatches{\any}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~(\lbl~\tms')~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms~(\lbl~\tms')}~\tms_{post})}
+    }
+  \end{array}
+\]
+
+Patterns which introduce a binding leave the binding in the
+resulting term:
+
+\[
+  \begin{array}{c}
+    \irule{match-bind}{
+    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{(\lbl_\pi~\tms_{pre}~\select{\Tmms~\Tmms'}~\tms'_{post})}
+    }{
+    \xmatches{\bind{p}{x}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms~[\Tmms']@x}~\tms'_{post})}
+    }
+  \end{array}
+\]
+
+Patterns in sequence are matched left to right:
+
+\[
+  \begin{array}{c}
+    \irule{match-sequence}{
+    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc_1}\\
+    \matches{p_2}{\Tmc_1}{\Tmc_2}\\
+    }{
+    \matches{\pseq{p_1}{p_2}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {\Tmc_2}
+    }
+  \end{array}
+\]
+
+Alternative patterns $\por{p_1}{p_2}$ picks the first of the two
+patterns that matches [Semantics could allow either one]:
+
+\[
+  \begin{array}{c}
+    \irule{match-or-l}{
+    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc}
+    }{
+    \matches{\por{p_1}{p_2}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {\Tmc}
+    }
+    \\\\
+    \irule{match-or-r}{
+    \lnot(\matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc_1})\\
+    \matches{p_2}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc_2}
+    }{
+    \matches{\por{p_1}{p_2}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {\Tmc_2}
+    }
+  \end{array}
+\]
+
+The rule for matching children $\children{p_1}{p_2}$ is probably
+the most complicated. First, the pattern $p_1$ matches normally.
+From the matched terms $\Tmms_1$, we extract the first term
+$(\lbl~\tms_{11})$ inside which we match $p_2$, resulting in the
+matched terms $\Tmms_{11}$. We transfer these matched terms to the
+final results (since they may contain bindings), together with the
+rest of the terms from $\Tmms_1$. Note that $p_1$ must match at
+least one term.
+
+\[
+  \begin{array}{c}
+    \irule{match-children}{
+    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{}
+                 {(\lbl_\pi~\tms_{pre}~\select{\Tmms~\Tmms_1}~\tms'_{post})}\\
+    \Tmms_1 = (\lbl~\tms_{11})~\Tmms'_1\\
+    \matches{p_2}{(\lbl~\mstart\mend~\tms_{11})}{(\lbl~\select{\Tmms_{11}}~\tms_{12})}
+    }{
+    \xmatches{\children{p_1}{p_2}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms~(\lbl~\Tmms_{11}~\tms_{12})~\Tmms'_1}~\tms'_{post})}
+    }
+  \end{array}
+\]
+
+The negation of a pattern $\pnot{p}$ matches the subsequent term
+if $p$ does \emph{not} match:
+
+\[
+  \begin{array}{c}
+    \irule{match-not}{
+    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~(\lbl~\tms')~\tms_{post})}{\Tmc})
+    }{
+    \xmatches{\pnot{p}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~(\lbl~\tms')~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms~(\lbl~\tms')}~\tms_{post})}
+    }
+  \end{array}
+\]
+
+Optional matches $\maybe{p}$ always succeeds, but matches $p$ if
+possible:
+
+\[
+  \begin{array}{c}
+    \irule{match-option-yes}{
+    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc}
+    }{
+    \matches{\maybe{p}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {\Tmc}
+    }
+    \\
+    \\
+    \irule{match-option-no}{
+    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc})
+    }{
+    \xmatches{\maybe{p}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    }
+  \end{array}
+\]
+
+Repetition of a pattern $\many{p}$ will greedily match $p$ as many
+times as possible:
+
+\[
+  \begin{array}{c}
+    \irule{match-many-more}{
+    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc_1}\\
+    \matches{\many{p}}{\Tmc_1}{\Tmc_2}
+    }{
+    \matches{\many{p}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {\Tmc_2}
+    }
+    \\\\
+    \irule{match-many-done}{
+    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc})
+    }{
+    \xmatches{\many{p}}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    }
+  \end{array}
+\]
+
+\section{Term Rewriting}
+
+\section*{TODO}
+
+\begin{itemize}
+\item Should we model failing pattern matching to distinguish it
+  from undefined behaviour?
+\item Well-formedness
+\item Symbol tables?
+\end{itemize}
+
 
 \end{document}
