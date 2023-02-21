@@ -28,9 +28,6 @@
 \newcommand{\Tmcb}{\ensuremath{\overset{{\bowtie}}{\tm}}}
 \newcommand{\Tmcs}{\ensuremath{\overset{\textcolor{\cursorColor}{\bowtie}}{\tms}}}
 
-\newcommand{\Tmm}{\ensuremath{\tilde{\tm}}}
-\newcommand{\Tmms}{\ensuremath{\tilde{\tms}}}
-
 %% Actions
 \newcommand{\action}{\ensuremath{\alpha}}
 \newcommand{\add}[1]{\ensuremath{\texttt{add}~#1}}
@@ -48,14 +45,18 @@
 \newcommand{\mstart}{\ensuremath{\textcolor{\cursorColor}{\rhd}}}
 \newcommand{\mend}{\ensuremath{\textcolor{\cursorColor}{\lhd}}}
 
+\newcommand{\bindings}{\ensuremath{\mathcal{M}}}
+\newcommand{\nobindings}{\ensuremath{\emptyset}}
+\newcommand{\extend}[2]{\ensuremath{#1\overset{\rightarrow}{\cup}#2}}
+
 \newcommand{\select}[1]{\mstart\colorbox{\cursorColor}{$#1$}\mend}
 
 \newcommand{\steps}[1]{\ensuremath{\xrightarrow{#1}}}
-\newcommand{\matches}[3]{\ensuremath{#1 \vdash #2 \Rightarrow #3}}
-\newcommand{\xmatches}[3]{\ensuremath{
+\newcommand{\matches}[4]{\ensuremath{#1 \vdash #2 \Rightarrow #3 ~|~ #4}}
+\newcommand{\xmatches}[4]{\ensuremath{
     \begin{array}{rl}
       #1 \vdash & #2 \Rightarrow\\
-                & #3
+                & #3 ~|~ #4
     \end{array}}}
 
 %% Patterns
@@ -67,6 +68,7 @@
 \newcommand{\many}[1]{\ensuremath{#1^*}}
 \newcommand{\any}{\ensuremath{\text{\underline{\hspace{0.6em}}}}}
 \newcommand{\bind}[2]{\ensuremath{#1@#2}}
+\newcommand{\paction}[2]{\ensuremath{#1\circ #2}}
 \newcommand{\fb}[1]{\ensuremath{\rightarrow(#1)}}
 \newcommand{\nfb}[1]{\ensuremath{\not\rightarrow(#1)}}
 \newcommand{\pin}[1]{\ensuremath{\mathit{In}(#1)}}
@@ -352,16 +354,16 @@ to the top until we can finish the term:
 \[
   \begin{array}{rcl}
     \arrayheading{3}{Terms with a sequence being matched}\\
-    \Tmc & ::= & (\lbl~\Tmcs) ~|~ (\lbl~\tms~\select{\Tmms}~\tms)\\
+    \Tmc & ::= & (\lbl~\Tmcs) ~|~ (\lbl~\tms~\select{\tms}~\tms)\\
     \Tmcs & ::= & \Tmc ~ \tms ~|~ \tm ~ \Tmcs\\
     \\
     \arrayheading{3}{Contexts (shallow)}\\
     \Tmc[\bullet] & ::= & (\lbl~\Tmcs[\bullet])\\
     \Tmcs[\bullet] & ::= & \bullet ~ \tms ~|~ \tm ~ \Tmcs[\bullet]\\
     \\
-    \arrayheading{3}{Selected terms}\\
-    \Tmm & ::= & (\lbl~\Tmms)\\
-    \Tmms & ::= & \Tmm~\Tmms ~|~ \Tmms~\Tmms ~|~ [\Tmms]@x ~|~ \epsilon\\
+    \arrayheading{3}{Bindings}\\
+    x, y      & \in & \mathcal{X}\\
+    \bindings & \in & \mathcal{X} \mapsto \tms\\
     \\
     \multicolumn{3}{l}{
     \begin{array}{crll}
@@ -375,6 +377,7 @@ to the top until we can finish the term:
         & ~|~ & \many{p} & \text{repetition}\\
         & ~|~ & \any{} & \text{any term}\\
         & ~|~ & \bind{p}{x} & \text{bind}\\
+        & ~|~ & \paction{p}{f} & \text{action}\\
         & ~|~ & \fb{p} & \text{followed by}\\
         & ~|~ & \nfb{p} & \text{not followed by}\\
         & ~|~ & \pin{\lbl} & \text{appears as child of}\\
@@ -388,58 +391,73 @@ to the top until we can finish the term:
 During matching we are selecting a sequence of sibling terms. A
 term \Tmc{} is a term where one such sequence has been selected.
 We represent the subterm whose children are being matched as
-$(\lbl~\tms_{pre}~\select{\Tmms}~\tms_{post})$: a $\lbl$ term
-where some subsequence $\Tmms$ of its children has been selected,
+$(\lbl~\tms_{pre}~\select{\tms}~\tms_{post})$: a $\lbl$ term
+where some subsequence $\tms$ of its children has been selected,
 $\tms_{pre}$ being the terms before the match and $\tms_{post}$
 the terms after the match. Matching commences by looking at terms
 in $\tms_{post}$ and moving them into the matched sequence, or
 equivalently, advancing the cursor $\mend$. Note that the coloring
 has no semantic meaning.
-%
-Selected terms $\Tmms$ can contain subsequences which may be bound
-to names $x$.
 
-Patterns match on labels $\lbl$ (with $\any$ matching any label),
-and can be combined in several ways:
-
-\begin{itemize}
-\item $\pseq{p_1}{p_2}$     --- $p_1$ followed by $p_2$
-\item $\por{p_1}{p_2}$      --- $p_1$ or $p_2$
-\item $\children{p_1}{p_2}$ --- $p_1$ with children matching $p_2$
-\item $\pnot{p}$            --- not $p$
-\item $\maybe{p}$           --- optionally $p$
-\item $\many{p}$            --- zero or more $p$
-\end{itemize}
-
-We can bind the result of matching a subpattern to a name with
-the pattern $\bind{p}{x}$. There are also a number of patterns
-which do not advance the cursor:
-
-\begin{itemize}
-\item $\fb{p}$     --- followed by $p$
-\item $\nfb{p}$    --- not followed by $p$
-\item $\pin{\lbl}$ --- inside a node with label $\lbl$
-\item $\pstart{}$  --- before all children of the current term
-\item $\pend{}$    --- after all children of the current term
-\end{itemize}
-
-Almost all rules look at the subterm whose children we are
-matching on. As with parsing, we use contexts to ``zoom in'' until
-we can apply a matching rule:
+The result of matching, apart from moving the cursor $\mend$, is a
+set of bindings $\bindings$ which maps variables to sequences of
+terms. If the same name is used more than once, the later binding
+is preferred. We write $\extend{\bindings_1}{\bindings_2}$ to mean
+the union of $\bindings_1$ and $\bindings_2$ where bindings from
+$\bindings_2$ override overlapping bindings from $\bindings_1$:
 
 \[
-  \begin{array}{c}
-    \irule{match-ctx}{
-    \matches{p}{\Tmc_1}{\Tmc_2}
-    }{
-    \matches{p}{\Tmc[\Tmc_1]}{\Tmc[\Tmc_2]}
-    }
-  \end{array}
+    \extend{\bindings_1}{\bindings_2} = \bindings_2\cup \{x\mapsto \bindings_1(x) ~|~ x \in (\mathbf{dom}(\bindings_1)\setminus\mathbf{dom}(\bindings_2))\}
 \]
+
+The pattern matching rule takes the shape
+$\matches{p}{\Tmc_1}{\Tmc_2}{\bindings}$, where we start from
+$\Tmc_1$ and match $p$, (possibly) extending the selection
+resulting in $\Tmc_2$ and the bindings $\bindings$.
 
 Throughout, we use $\lbl_\pi$ as the label of the parent of the
 nodes we are matching on.
 %
+Patterns $\bind{p}{x}$ which introduce a binding remembers the
+terms that were matched in the resulting binding set:
+
+\[
+  \begin{array}{c}
+    \irule{match-bind}{
+    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+               {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}
+    }{
+    \xmatches{\bind{p}{x}}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\extend{\bindings} \{x\mapsto\tms'\}}
+    }
+  \end{array}
+\]
+
+% Patterns match on labels $\lbl$ (with $\any$ matching any label),
+% and can be combined in several ways:
+
+% \begin{itemize}
+% \item $\pseq{p_1}{p_2}$     --- $p_1$ followed by $p_2$
+% \item $\por{p_1}{p_2}$      --- $p_1$ or $p_2$
+% \item $\children{p_1}{p_2}$ --- $p_1$ with children matching $p_2$
+% \item $\pnot{p}$            --- not $p$
+% \item $\maybe{p}$           --- optionally $p$
+% \item $\many{p}$            --- zero or more $p$
+% \end{itemize}
+
+% We can bind the result of matching a subpattern to a name with
+% the pattern $\bind{p}{x}$. There are also a number of patterns
+% which do not advance the cursor:
+
+% \begin{itemize}
+% \item $\fb{p}$     --- followed by $p$
+% \item $\nfb{p}$    --- not followed by $p$
+% \item $\pin{\lbl}$ --- inside a node with label $\lbl$
+% \item $\pstart{}$  --- before all children of the current term
+% \item $\pend{}$    --- after all children of the current term
+% \end{itemize}
+
 \pstart{} and \pend{} match the very start and the very end
 respectively of the full sequence of children:
 
@@ -448,13 +466,13 @@ respectively of the full sequence of children:
     \irule{match-start}{}{
     \matches{\pstart}
     {(\lbl_\pi~\mstart\mend~\tms_{post})}
-    {(\lbl_\pi~\mstart\mend~\tms_{post})}
+    {(\lbl_\pi~\mstart\mend~\tms_{post})}{\nobindings}
     }
     \\\\
     \irule{match-end}{}{
     \xmatches{\pend}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms})}{\nobindings}
     }
   \end{array}
 \]
@@ -466,31 +484,31 @@ term:
   \begin{array}{c}
     \irule{match-in}{}{
     \xmatches{\pin{\lbl_\pi}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
     }
   \end{array}
 \]
 
 The lookahead patterns $\fb{p}$ and $\nfb{p}$ tries the pattern
-$p$ but does not advance the cursor
+$p$, but does not advance the cursor nor remember bindings.
 
 \[
   \begin{array}{c}
     \irule{match-followed-by}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc}
+    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings}
     }{
     \xmatches{\fb{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
     }
     \\\\
     \irule{match-not-followed-by}{
-    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc})
+    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}){\bindings}
     }{
     \xmatches{\nfb{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
     }
   \end{array}
 \]
@@ -503,107 +521,97 @@ to match on:
   \begin{array}{c}
     \irule{match-label}{}{
     \xmatches{\lbl}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~(\lbl~\tms')~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms~(\lbl~\tms')}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms~(\lbl~\tms')}~\tms_{post})}{\nobindings}
     }
     \\\\
     \irule{match-any}{}{
     \xmatches{\any}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~(\lbl~\tms')~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms~(\lbl~\tms')}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms~(\lbl~\tms')}~\tms_{post})}{\nobindings}
     }
   \end{array}
 \]
 
-Patterns which introduce a binding leave the binding in the
-resulting term:
-
-\[
-  \begin{array}{c}
-    \irule{match-bind}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{(\lbl_\pi~\tms_{pre}~\select{\Tmms~\Tmms'}~\tms'_{post})}
-    }{
-    \xmatches{\bind{p}{x}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms~[\Tmms']@x}~\tms'_{post})}
-    }
-  \end{array}
-\]
-
-Patterns in sequence are matched left to right:
+Patterns in sequence are matched left to right, with later
+bindings being preferred over earlier:
 
 \[
   \begin{array}{c}
     \irule{match-sequence}{
-    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc_1}\\
-    \matches{p_2}{\Tmc_1}{\Tmc_2}\\
+    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc_1}{\bindings_1}\\
+    \matches{p_2}{\Tmc_1}{\Tmc_2}{\bindings_2}\\
     }{
     \matches{\pseq{p_1}{p_2}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {\Tmc_2}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {\Tmc_2}{\extend{\bindings_1}{\bindings_2}}
     }
   \end{array}
 \]
 
 Alternative patterns $\por{p_1}{p_2}$ picks the first of the two
-patterns that matches [Semantics could allow either one]:
+patterns that matches [Could not be zoomed in?]:
 
 \[
   \begin{array}{c}
     \irule{match-or-l}{
-    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc}
+    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings}
     }{
     \matches{\por{p_1}{p_2}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {\Tmc}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {\Tmc}{\bindings}
     }
     \\\\
     \irule{match-or-r}{
-    \lnot(\matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc_1})\\
-    \matches{p_2}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc_2}
+    \lnot(\matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc_1}{\bindings_1})\\
+    \matches{p_2}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc_2}{\bindings_2}
     }{
     \matches{\por{p_1}{p_2}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {\Tmc_2}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {\Tmc_2}{\bindings_2}
     }
   \end{array}
 \]
 
 The rule for matching children $\children{p_1}{p_2}$ is probably
-the most complicated. First, the pattern $p_1$ matches normally.
-From the matched terms $\Tmms_1$, we extract the first term
-$(\lbl~\tms_{11})$ inside which we match $p_2$, resulting in the
-matched terms $\Tmms_{11}$. We transfer these matched terms to the
-final results (since they may contain bindings), together with the
-rest of the terms from $\Tmms_1$. Note that $p_1$ must match at
-least one term.
+the most complicated. First, the pattern $p_1$ matches normally
+and defines the movement of the cursor to include $\tms_1$.
+Additionally, we extract the first term $(\lbl~\tms_{11})$ inside
+which we match $p_2$. We transfer the bindings from the inner
+match to the final results, preferring these bindings to ones from
+the outer match.
+%
+Note that $p_1$ must match at least one term.
 
 \[
   \begin{array}{c}
     \irule{match-children}{
-    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{}
-                 {(\lbl_\pi~\tms_{pre}~\select{\Tmms~\Tmms_1}~\tms'_{post})}\\
-    \Tmms_1 = (\lbl~\tms_{11})~\Tmms'_1\\
-    \matches{p_2}{(\lbl~\mstart\mend~\tms_{11})}{(\lbl~\select{\Tmms_{11}}~\tms_{12})}
+    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+                 {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms_1}~\tms'_{post})}{\bindings_1}\\
+    \tms_1 = (\lbl~\tms_{11})~\tms'_1\\
+    \matches{p_2}{(\lbl~\mstart\mend~\tms_{11})}{\Tmc}{\bindings_2}
     }{
     \xmatches{\children{p_1}{p_2}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms~(\lbl~\Tmms_{11}~\tms_{12})~\Tmms'_1}~\tms'_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms_1}~\tms'_{post})}
+    {\extend{\bindings_1}{\bindings_2}}
     }
   \end{array}
 \]
 
 The negation of a pattern $\pnot{p}$ matches the subsequent term
-if $p$ does \emph{not} match:
+if $p$ does \emph{not} match. Note that this means that the next
+term is consumed regardless of whether the pattern $p$ consumes
+zero or more than one term:
 
 \[
   \begin{array}{c}
     \irule{match-not}{
-    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~(\lbl~\tms')~\tms_{post})}{\Tmc})
+    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}{\Tmc}{\bindings})
     }{
     \xmatches{\pnot{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~(\lbl~\tms')~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms~(\lbl~\tms')}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms~(\lbl~\tms')}~\tms_{post})}{\nobindings}
     }
   \end{array}
 \]
@@ -614,58 +622,114 @@ possible:
 \[
   \begin{array}{c}
     \irule{match-option-yes}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc}
+    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings}
     }{
     \matches{\maybe{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {\Tmc}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {\Tmc}{\bindings}
     }
     \\
     \\
     \irule{match-option-no}{
-    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc})
+    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings})
     }{
     \xmatches{\maybe{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
     }
   \end{array}
 \]
 
 Repetition of a pattern $\many{p}$ will greedily match $p$ as many
-times as possible:
+times as possible, preferring later bindings to earlier:
 
 \[
   \begin{array}{c}
     \irule{match-many-more}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc_1}\\
-    \matches{\many{p}}{\Tmc_1}{\Tmc_2}
+    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc_1}{\bindings_1}\\
+    \matches{\many{p}}{\Tmc_1}{\Tmc_2}{\bindings_2}
     }{
     \matches{\many{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {\Tmc_2}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {\Tmc_2}{\extend{\bindings_1}{\bindings_2}}
     }
     \\\\
     \irule{match-many-done}{
-    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}{\Tmc})
+    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings})
     }{
     \xmatches{\many{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\Tmms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
+    }
+  \end{array}
+\]
+
+An action pattern $\paction{p}{f}$ comes equipped with a function
+$f : \tms \mapsto \mathbf{bool}$ which must return $\mathbf{true}$
+for the matched pattern:
+
+\[
+  \begin{array}{c}
+    \irule{match-action}{
+    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+               {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}\\
+    f(\tms') = \mathbf{true}
+    }{
+    \xmatches{\paction{p}{f}}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}
+    }
+  \end{array}
+\]
+
+
+As with parsing, we use contexts to ``zoom in'' until we can apply
+a matching rule:
+
+\[
+  \begin{array}{c}
+    \irule{match-ctx}{
+    \matches{p}{\Tmc_1}{\Tmc_2}{\bindings}
+    }{
+    \matches{p}{\Tmc[\Tmc_1]}{\Tmc[\Tmc_2]}{\bindings}
     }
   \end{array}
 \]
 
 \section{Term Rewriting}
 
+
+
 \section*{TODO}
 
 \begin{itemize}
-\item Should we model failing pattern matching to distinguish it
-  from undefined behaviour?
+\item Top-down vs. Bottom-up
+\item Regex matching (requires carrying data)
 \item Well-formedness
 \item Symbol tables?
 \end{itemize}
 
+\section*{Quiz}
+
+\begin{verbatim}
+((T(Foo) * T(Bar)) << Any[Id]) >>
+  [](Match& _) { return _(Id); }
+
+(foo a) (bar b) --> a
+\end{verbatim}
+
+\begin{verbatim}
+(In(Foo) << Any[Id]) >>
+  [](Match& _) { return _(Id); }
+
+(foo a) (bar b) --> Segmentation fault
+\end{verbatim}
+
+\begin{verbatim}
+((!In(Bar)) * T(Baz)) >>
+  [](Match& _) { return NodeDef::create(Fr0b); }
+
+(foo baz) --> fr0b
+\end{verbatim}
 
 \end{document}
