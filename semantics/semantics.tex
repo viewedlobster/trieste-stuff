@@ -29,8 +29,10 @@
 \newcommand{\Tms}{\ensuremath{\check{\tms}}}
 
 \newcommand{\Tmc}{\ensuremath{\overset{ \textcolor{\cursorColor}{\bowtie}}{\tm}}}
-\newcommand{\Tmcb}{\ensuremath{\overset{{\bowtie}}{\tm}}}
 \newcommand{\Tmcs}{\ensuremath{\overset{\textcolor{\cursorColor}{\bowtie}}{\tms}}}
+
+\newcommand{\Tmx}{\ensuremath{\hat{\tm}}}
+\newcommand{\Tmxs}{\ensuremath{\hat{\tms}}}
 
 %% Actions
 \newcommand{\action}{\ensuremath{\alpha}}
@@ -51,7 +53,7 @@
 
 \newcommand{\bindings}{\ensuremath{\mathcal{M}}}
 \newcommand{\nobindings}{\ensuremath{\emptyset}}
-\newcommand{\extend}[2]{\ensuremath{#1\overset{\rightarrow}{\cup}#2}}
+\newcommand{\extend}[2]{\ensuremath{#1\cup #2}}
 \newcommand{\concat}{\ensuremath{\mathop{+\!\!+}}}
 
 \newcommand{\select}[1]{\mstart\colorbox{\cursorColor}{$#1$}\mend}
@@ -71,7 +73,7 @@
          &        & #4 ~|~ #5
     \end{array}}}
 
-\newcommand{\wfp}[2]{\ensuremath{#1 \vdash #2}}
+\newcommand{\wfp}[3]{\ensuremath{#1 \vdash #2 : #3}}
 
 %% Patterns
 \newcommand{\pseq}[2]{\ensuremath{#1 \cdot #2}}
@@ -121,7 +123,7 @@
     \action & ::= & \add{\lbl}\\
             & ~|~ & \push{\lbl}\\
             & ~|~ & \pop{\lbl}\\
-            & ~|~ & \pseq{\lbl}\\
+            & ~|~ & \seq{\lbl}\\
             & ~|~ & \term{\lbls}\\
             & ~|~ & \trypop{\lbl}\\
             & ~|~ & \invalid\\
@@ -365,389 +367,56 @@ to the top until we can finish the term:
   \end{array}
 \]
 
-\section{Pattern Matching: Original Implementation}
-
-\[
-  \begin{array}{rcl}
-    \arrayheading{3}{Terms with a sequence being matched}\\
-    \Tmc & ::= & (\lbl~\Tmcs) ~|~ (\lbl~\tms~\select{\tms}~\tms)\\
-    \Tmcs & ::= & \Tmc ~ \tms ~|~ \tm ~ \Tmcs\\
-    \\
-    \arrayheading{3}{Contexts (shallow)}\\
-    \Tmc[\bullet] & ::= & (\lbl~\Tmcs[\bullet])\\
-    \Tmcs[\bullet] & ::= & \bullet ~ \tms ~|~ \tm ~ \Tmcs[\bullet]\\
-    \\
-    \arrayheading{3}{Bindings}\\
-    x, y      & \in & \mathcal{X}\\
-    \bindings & \in & \mathcal{X} \mapsto \tms\\
-    \\
-    \multicolumn{3}{l}{
-    \begin{array}{crll}
-      \arrayheading{4}{Patterns}\\
-      p & ::= & \lbl & \text{a term with label $\lbl$}\\
-        & ~|~ & \pseq{p}{p} & \text{sequence}\\
-        & ~|~ & \por{p}{p} & \text{choice}\\
-        & ~|~ & \children{p}{p} & \text{with children}\\
-        & ~|~ & \pnot{p} & \text{negation}\\
-        & ~|~ & \maybe{p} & \text{option}\\
-        & ~|~ & \many{p} & \text{repetition}\\
-        & ~|~ & \any{} & \text{any term}\\
-        & ~|~ & \bind{p}{x} & \text{bind}\\
-        & ~|~ & \paction{p}{f} & \text{action}\\
-        & ~|~ & \fb{p} & \text{followed by}\\
-        & ~|~ & \nfb{p} & \text{not followed by}\\
-        & ~|~ & \pin{\lbl} & \text{appears as child of}\\
-        & ~|~ & \pstart{} & \text{before all children}\\
-        & ~|~ & \pend{} & \text{after all children}\\
-    \end{array}
-    }\\
-  \end{array}
-\]
-%
-During matching we are selecting a sequence of sibling terms. A
-term \Tmc{} is a term where one such sequence has been selected.
-We represent the subterm whose children are being matched as
-$(\lbl~\tms_{pre}~\select{\tms}~\tms_{post})$: a $\lbl$ term
-where some subsequence $\tms$ of its children has been selected,
-$\tms_{pre}$ being the terms before the match and $\tms_{post}$
-the terms after the match. Matching commences by looking at terms
-in $\tms_{post}$ and moving them into the matched sequence, or
-equivalently, advancing the cursor $\mend$. Note that the coloring
-has no semantic meaning.
-
-The result of matching, apart from moving the cursor $\mend$, is a
-set of bindings $\bindings$ which maps variables to sequences of
-terms.
-%
-If the same variable name is used more than once, the later
-binding is preferred. We write $\extend{\bindings_1}{\bindings_2}$
-to mean the union of $\bindings_1$ and $\bindings_2$ where
-bindings from $\bindings_2$ override overlapping bindings from
-$\bindings_1$:
-
-\[
-    \extend{\bindings_1}{\bindings_2} = \bindings_2\cup \{x\mapsto \bindings_1(x) ~|~ x \in (\mathbf{dom}(\bindings_1)\setminus\mathbf{dom}(\bindings_2))\}
-\]
-%
-The pattern matching rule takes the shape
-$\matches{p}{\Tmc_1}{\Tmc_2}{\bindings}$, where we start from
-$\Tmc_1$ and match $p$, (possibly) extending the selection
-resulting in $\Tmc_2$ and the bindings $\bindings$.
-
-Throughout, we use $\lbl_\pi$ as the label of the parent of the
-nodes we are matching on.
-%
-Patterns $\bind{p}{x}$ which introduce a binding remembers the
-terms that were matched in the resulting binding set:
-%
-\[
-  \begin{array}{c}
-    \irule{match-bind}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-               {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}
-    }{
-    \xmatches{\bind{p}{x}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\extend{\bindings} \{x\mapsto\tms'\}}
-    }
-  \end{array}
-\]
-%
-% Patterns match on labels $\lbl$ (with $\any$ matching any label),
-% and can be combined in several ways:
-
-% \begin{itemize}
-% \item $\pseq{p_1}{p_2}$     --- $p_1$ followed by $p_2$
-% \item $\por{p_1}{p_2}$      --- $p_1$ or $p_2$
-% \item $\children{p_1}{p_2}$ --- $p_1$ with children matching $p_2$
-% \item $\pnot{p}$            --- not $p$
-% \item $\maybe{p}$           --- optionally $p$
-% \item $\many{p}$            --- zero or more $p$
-% \end{itemize}
-%
-% We can bind the result of matching a subpattern to a name with
-% the pattern $\bind{p}{x}$. There are also a number of patterns
-% which do not advance the cursor:
-%
-% \begin{itemize}
-% \item $\fb{p}$     --- followed by $p$
-% \item $\nfb{p}$    --- not followed by $p$
-% \item $\pin{\lbl}$ --- inside a node with label $\lbl$
-% \item $\pstart{}$  --- before all children of the current term
-% \item $\pend{}$    --- after all children of the current term
-% \end{itemize}
-%
-\pstart{} and \pend{} match the very start and the very end
-respectively of the full sequence of children:
-%
-\[
-  \begin{array}{c}
-    \irule{match-start}{}{
-    \matches{\pstart}
-    {(\lbl_\pi~\mstart\mend~\tms_{post})}
-    {(\lbl_\pi~\mstart\mend~\tms_{post})}{\nobindings}
-    }
-    \\\\
-    \irule{match-end}{}{
-    \xmatches{\pend}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms})}{\nobindings}
-    }
-  \end{array}
-\]
-%
-$\pin{\lbl}$ succeeds if we are matching directly inside a $\lbl$
-term:
-
-\[
-  \begin{array}{c}
-    \irule{match-in}{}{
-    \xmatches{\pin{\lbl_\pi}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
-    }
-  \end{array}
-\]
-%
-The lookahead patterns $\fb{p}$ and $\nfb{p}$ tries the pattern
-$p$, but does not advance the cursor nor remember bindings.
-
-\[
-  \begin{array}{c}
-    \irule{match-followed-by}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings}
-    }{
-    \xmatches{\fb{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
-    }
-    \\\\
-    \irule{match-not-followed-by}{
-    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}){\bindings}
-    }{
-    \xmatches{\nfb{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
-    }
-  \end{array}
-\]
-%
-Matching on a label $\lbl$ succeeds if it is the next label.
-Matching on a wild-card always succeeds as long as there is a term
-to match on:
-
-\[
-  \begin{array}{c}
-    \irule{match-label}{}{
-    \xmatches{\lbl}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms~(\lbl~\tms')}~\tms_{post})}{\nobindings}
-    }
-    \\\\
-    \irule{match-any}{}{
-    \xmatches{\any}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms~(\lbl~\tms')}~\tms_{post})}{\nobindings}
-    }
-  \end{array}
-\]
-%
-Patterns in sequence are matched left to right, with later
-bindings being preferred over earlier:
-
-\[
-  \begin{array}{c}
-    \irule{match-sequence}{
-    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc_1}{\bindings_1}\\
-    \matches{p_2}{\Tmc_1}{\Tmc_2}{\bindings_2}\\
-    }{
-    \matches{\pseq{p_1}{p_2}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {\Tmc_2}{\extend{\bindings_1}{\bindings_2}}
-    }
-  \end{array}
-\]
-
-Alternative patterns $\por{p_1}{p_2}$ picks the first of the two
-patterns that matches [Could not be zoomed in?]:
-
-\[
-  \begin{array}{c}
-    \irule{match-or-l}{
-    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings}
-    }{
-    \matches{\por{p_1}{p_2}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {\Tmc}{\bindings}
-    }
-    \\\\
-    \irule{match-or-r}{
-    \lnot(\matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc_1}{\bindings_1})\\
-    \matches{p_2}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc_2}{\bindings_2}
-    }{
-    \matches{\por{p_1}{p_2}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {\Tmc_2}{\bindings_2}
-    }
-  \end{array}
-\]
-
-The rule for matching children $\children{p_1}{p_2}$ is probably
-the most complicated. First, the pattern $p_1$ matches normally
-and defines the movement of the cursor to include $\tms_1$.
-Additionally, we extract the first term $(\lbl~\tms_{11})$ inside
-which we match $p_2$. We transfer the bindings from the inner
-match to the final results, preferring these bindings to ones from
-the outer match.
-%
-Note that $p_1$ must match at least one term.
-
-\[
-  \begin{array}{c}
-    \irule{match-children}{
-    \matches{p_1}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-                 {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms_1}~\tms'_{post})}{\bindings_1}\\
-    \tms_1 = (\lbl~\tms_{11})~\tms'_1\\
-    \matches{p_2}{(\lbl~\mstart\mend~\tms_{11})}{\Tmc}{\bindings_2}
-    }{
-    \xmatches{\children{p_1}{p_2}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms_1}~\tms'_{post})}
-    {\extend{\bindings_1}{\bindings_2}}
-    }
-  \end{array}
-\]
-
-The negation of a pattern $\pnot{p}$ matches the subsequent term
-if $p$ does \emph{not} match. Note that this means that the next
-term is consumed regardless of whether the pattern $p$ consumes
-zero or more than one term:
-
-\[
-  \begin{array}{c}
-    \irule{match-not}{
-    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}{\Tmc}{\bindings})
-    }{
-    \xmatches{\pnot{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms~(\lbl~\tms')}~\tms_{post})}{\nobindings}
-    }
-  \end{array}
-\]
-
-Optional matches $\maybe{p}$ always succeeds, but matches $p$ if
-possible:
-
-\[
-  \begin{array}{c}
-    \irule{match-option-yes}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings}
-    }{
-    \matches{\maybe{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {\Tmc}{\bindings}
-    }
-    \\
-    \\
-    \irule{match-option-no}{
-    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings})
-    }{
-    \xmatches{\maybe{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
-    }
-  \end{array}
-\]
-
-Repetition of a pattern $\many{p}$ will greedily match $p$ as many
-times as possible, preferring later bindings to earlier:
-
-\[
-  \begin{array}{c}
-    \irule{match-many-more}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc_1}{\bindings_1}\\
-    \matches{\many{p}}{\Tmc_1}{\Tmc_2}{\bindings_2}
-    }{
-    \matches{\many{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {\Tmc_2}{\extend{\bindings_1}{\bindings_2}}
-    }
-    \\\\
-    \irule{match-many-done}{
-    \lnot(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings})
-    }{
-    \xmatches{\many{p}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
-    }
-  \end{array}
-\]
-
-An action pattern $\paction{p}{f}$ comes equipped with a function
-$f : \tms \mapsto \mathbf{bool}$ which must return $\mathbf{true}$
-for the matched pattern:
-
-\[
-  \begin{array}{c}
-    \irule{match-action}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-               {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}\\
-    f(\tms') = \mathbf{true}
-    }{
-    \xmatches{\paction{p}{f}}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}
-    }
-  \end{array}
-\]
-
-
-As with parsing, we use contexts to ``zoom in'' until we can apply
-a matching rule:
-
-\[
-  \begin{array}{c}
-    \irule{match-ctx}{
-    \matches{p}{\Tmc_1}{\Tmc_2}{\bindings}
-    }{
-    \matches{p}{\Tmc[\Tmc_1]}{\Tmc[\Tmc_2]}{\bindings}
-    }
-  \end{array}
-\]
-
-\section{New Suggestion for Pattern Matching}
+\section{Pattern Matching}
 
 \[
   \begin{array}{crll}
     \arrayheading{4}{Predicates}\\
       \phi & ::= & \fb{p}      & \text{followed by}         \\
+           & ~|~ & \nfb{p}     & \text{not followed by}     \\
            & ~|~ & \pin{\lbl}  & \text{appears as child of} \\
            & ~|~ & \pstart{}   & \text{before all children} \\
            & ~|~ & \pend{}     & \text{after all children}  \\
-           & ~|~ & \pnot{\phi} & \text{negation}            \\
     \\
     \arrayheading{4}{Patterns}\\
       p & ::= & \phi            & \text{predicate}                          \\
-        & ~|~ & \lbls           & \text{a term with label in $\lbls$}       \\
-        & ~|~ & !\lbls          & \text{a term with a label not in $\lbls$} \\
+        & ~|~ & \lbl            & \text{a term with label $\lbl$}           \\
         & ~|~ & \any{}          & \text{any single term}                    \\
         & ~|~ & \por{p}{p}      & \text{choice}                             \\
         & ~|~ & \pseq{p}{p}     & \text{sequence}                           \\
         & ~|~ & \children{p}{p} & \text{children}                           \\
+        & ~|~ & \pnot{p}        & \text{negation}                           \\
         & ~|~ & \maybe{p}       & \text{option}                             \\
         & ~|~ & \many{p}        & \text{repetition}                         \\
         & ~|~ & \bind{p}{x}     & \text{bind}                               \\
         & ~|~ & \paction{p}{f}  & \text{action}                             \\
-    \\
-    \arrayheading{4}{Multiplicities}\\
-    \Gamma & ::= & \Gamma, x : m ~|~ \epsilon & \text{multiplicity mapping}\\
-    m      & ::= & 0 ~|~ 1 ~|~ \omega & \text{multiplicities}
   \end{array}
 \]
 %
-This new design works under the hypothesis that negation is used
-for two different things: consuming exactly one term that is not
-among a set of labels and for doing negative lookahead.
+During pattern matching we select some part of the a term based on
+a pattern $p$. The dynamic pattern matching rules are presented in
+Section~\ref{sec:match:dyn}. Among our patterns we distinguish
+predicates $\phi$ which do not expand the current selection, but
+give positional restrictions on which patterns may (or may not)
+follow and inside which term we are currently matching.
+%
+Together with predicates, patterns are built from matching of
+individual labels $\lbl$ and combining patterns through choice
+$\por{p}{p}$, sequence $\pseq{p}{p}$, children $\children{p}{p}$,
+negation $\pnot{p}$, option $\maybe{p}$ and repetition $\many{p}$.
+%
+During pattern matching, we bind subterms to names ($\bind{p}{x}$).
+We can also supply a boolean function $f$ that must be true for
+a selected part ($\paction{p}{f}$).
+
+\subsection{Well-Formed Patterns}
+\[
+  \begin{array}{crll}
+    \arrayheading{4}{Multiplicities}\\
+    m      & ::= & 0 ~|~ 1 ~|~ \omega & \text{multiplicities}\\
+    \Gamma & ::= & \Gamma, x : m ~|~ \epsilon & \text{multiplicity mapping}\\
+  \end{array}
+\]
 %
 In addition to pattern matching we define well-formedness rules
 where each variable binding is associated with a
@@ -755,28 +424,24 @@ where each variable binding is associated with a
 matched -- $0$, $1$ or an unknown number $\omega$. This helps rule
 out some bad cases, such as taking the children of zero terms.
 
-\TODO{This formulation requires a workaround for the pattern
-  $\many{(\pnot{(\por{(\children{\mathit{foo}}{p_1})}{(\children{\mathit{bar}}{p_2})})})}$.
-  Would it work to have negation at the top-level but disallow
-  negation of $\omega$ patterns?}
+% Multiplicities of patterns are calculated as $\mu(p)$:
 
-Multiplicities of patterns are calculated as $\mu(p)$:
-
-\[
-  \begin{array}{rcl}
-    \mu(\phi)                & = & 0                         \\
-    \mu(\lbls)               & = & 1                         \\
-    \mu(!\lbls)              & = & 1                         \\
-    \mu(\any)                & = & 1                         \\
-    \mu(\por{p_1}{p_2})      & = & \mu(p_1) \oslash \mu(p_2) \\
-    \mu(\pseq{p_1}{p_2})     & = & \mu(p_1) \oplus \mu(p_2)  \\
-    \mu(\children{p_1}{p_2}) & = & \mu(p_1)                  \\
-    \mu(\maybe{p})           & = & \omega                    \\
-    \mu(\many{p})            & = & \omega                    \\
-    \mu(\bind{p}{x})         & = & \mu(p)                    \\
-    \mu(\paction{p}{f})      & = & \mu(p)                    \\
-  \end{array}
-\]
+% \[
+%   \begin{array}{rcl}
+%     \mu(\phi)                & = & 0                         \\
+%     \mu(\lbls)               & = & 1                         \\
+%     \mu(!\lbls)              & = & 1                         \\
+%     \mu(\any)                & = & 1                         \\
+%     \mu(\por{p_1}{p_2})      & = & \mu(p_1) \oslash \mu(p_2) \\
+%     \mu(\pseq{p_1}{p_2})     & = & \mu(p_1) \oplus \mu(p_2)  \\
+%     \mu(\children{p_1}{p_2}) & = & \mu(p_1)                  \\
+%     \mu(\pnot{p})            & = & \mu(p)                    \\
+%     \mu(\maybe{p})           & = & \omega                    \\
+%     \mu(\many{p})            & = & \omega                    \\
+%     \mu(\bind{p}{x})         & = & \mu(p)                    \\
+%     \mu(\paction{p}{f})      & = & \mu(p)                    \\
+%   \end{array}
+% \]
 
 We define the following operations on multiplicities:
 
@@ -809,7 +474,7 @@ $
 $
 
 \noindent
-We lift operations on multiplicities in the expected way:
+We lift these operations to mappings in the expected way:
 
 \[
   m \odot \Gamma =
@@ -819,70 +484,100 @@ We lift operations on multiplicities in the expected way:
   \end{cases}
 \]
 %
-All the predicates are well-formed if their nested patterns are
-well-formed. Any bindings in the nested patterns are discarded.
+We also allow the point-wise combination of mappings, where we
+provide a default multiplicity that we use for the mappings that
+are only in one of the mappings.
+
+% \[
+%   \Gamma_1 \odot \Gamma_2 =
+%   \begin{cases}
+%     (\Gamma_1' \odot (\Gamma_2', \Gamma_2'')), x : (m_1 \odot m_2) &
+%     \text{if } \Gamma_1 = \Gamma_1', x : m_1 \text{ and } \Gamma_2 = \Gamma_2', x : m_2, \Gamma_2''\\
+%     \epsilon & \text{otherwise}
+%   \end{cases}
+% \]
+
+\[
+  \Gamma_1 \odot_m \Gamma_2 =
+  \begin{cases}
+    (\Gamma_1' \odot (\Gamma_2', \Gamma_2'')), x : (m_1 \odot m_2) &
+    \text{if } \Gamma_1 = \Gamma_1', x : m_1 \text{ and } \Gamma_2 = \Gamma_2', x : m_2, \Gamma_2''\\
+    (\Gamma_1' \odot \Gamma_2), x : (m \odot m_1) &
+    \text{if } \Gamma_1 = \Gamma_1', x : m_1 \text{ and } x \notin \mathbf{dom}(\Gamma_2)\\
+    m \odot \Gamma_2 & \text{otherwise}
+  \end{cases}
+\]
 %
-The atomic single term patterns trivially have no bindings.
+The well-formedness relation takes the shape \wfp{\Gamma}{p}{m},
+meaning ``$p$ has multiplicity $m$ with the bindings in
+$\Gamma$''. \TODO{It might be more intuitive to pick a syntax
+  where it is clear that $\Gamma$ is an output. }
+
+All the predicates are well-formed with multiplicity $0$ if their
+nested patterns are well-formed. Any bindings in the nested
+patterns are discarded.
+%
+The atomic single term patterns have multiplicity $1$ and
+trivially have no bindings.
 
 \[
   \begin{array}{c}
     \irule{wf-followed-by}{
-    \wfp{\Gamma}{p}
+    \wfp{\Gamma}{p}{m}
     }{
-    \wfp{\epsilon}{\fb{p}}
+    \wfp{\epsilon}{\fb{p}}{0}
     }
     \quad
-    \irule{wf-not}{
-    \lnot(\wfp{\Gamma}{\phi})
+    \irule{wf-not-followed-by}{
+    \wfp{\Gamma}{p}{m}
     }{
-    \wfp{\epsilon}{\pnot{\phi}}
+    \wfp{\epsilon}{\nfb{p}}{0}
     }
-    \\\\
+    \quad
     \irule{wf-in}{
     }{
-    \wfp{\epsilon}{\pin{\lbl}}
+    \wfp{\epsilon}{\pin{\lbl}}{0}
     }
-    \quad
+    \\\\
     \irule{wf-start}{
     }{
-    \wfp{\epsilon}{\pstart}
+    \wfp{\epsilon}{\pstart}{0}
     }
     \quad
     \irule{wf-end}{
     }{
-    \wfp{\epsilon}{\pend}
+    \wfp{\epsilon}{\pend}{0}
     }
     \\\\
-    \irule{wf-labels}{
+    \irule{wf-label}{
     }{
-    \wfp{\epsilon}{\lbls}
-    }
-    \quad
-    \irule{wf-not-labels}{
-    }{
-    \wfp{\epsilon}{!\lbls}
+    \wfp{\epsilon}{\lbl}{1}
     }
     \quad
     \irule{wf-any}{
     }{
-    \wfp{\epsilon}{\any}
+    \wfp{\epsilon}{\any}{1}
     }
   \end{array}
 \]
 %
-For choice, bindings must overlap. The resulting multiplicity for
-bindings in a choice is $\omega$ unless the overlapping bindings
-have the same multiplicity.
+For choice, the multiplicity of an overlapping binding is known
+only if it is the same ($0$ or $1$) in both branches. Similarly,
+the resulting multiplicity is $\omega$ unless both branches have
+the same multiplicity. Bindings that appear in only one of the
+branches get an unknown multiplicity since we don't know which
+branch has been chosen (this is handled by the $\oslash_\omega$
+operation).
 
 \[
   \begin{array}{c}
     \irule{wf-choice}{
-    \wfp{\Gamma_1}{p_1}
+    \wfp{\Gamma_1}{p_1}{m_1}
     \quad
-    \wfp{\Gamma_2}{p_2}\\
-    \mathbf{dom}(\Gamma_1) = \mathbf{dom}(\Gamma_2)
+    \wfp{\Gamma_2}{p_2}{m_2}
+%    \mathbf{dom}(\Gamma_1) = \mathbf{dom}(\Gamma_2)
     }{
-    \wfp{\Gamma_1 \oslash \Gamma_2}{\por{p_1}{p_2}}
+    \wfp{\Gamma_1 \oslash_\omega \Gamma_2}{\por{p_1}{p_2}}{m_1\oslash m_2}
     }
   \end{array}
 \]
@@ -898,34 +593,47 @@ anything.
 \[
   \begin{array}{c}
     \irule{wf-seq}{
-    \wfp{\Gamma_1}{p_1}\quad
-    \wfp{\Gamma_2}{p_2}\\
+    \wfp{\Gamma_1}{p_1}{m_1}\quad
+    \wfp{\Gamma_2}{p_2}{m_2}\\
     \mathbf{dom}(\Gamma_1) \cap \mathbf{dom}(\Gamma_2) = \emptyset
     }{
-    \wfp{\Gamma_1, \Gamma_2}{\pseq{p_1}{p_2}}
+    \wfp{\Gamma_1, \Gamma_2}{\pseq{p_1}{p_2}}{m_1\oplus m_2}
     }
     \quad
     \irule{wf-children}{
-    \mu(p_1) = 1
+    \wfp{\Gamma_1}{p_1}{1}
     \quad
-    \wfp{\Gamma_1}{p_1}
-    \quad
-    \wfp{\Gamma_2}{p_2}\\
+    \wfp{\Gamma_2}{p_2}{m}\\
     \mathbf{dom}(\Gamma_1) \cap \mathbf{dom}(\Gamma_2) = \emptyset
     }{
-    \wfp{\Gamma_1, \Gamma_2}{\children{p_1}{p_2}}
+    \wfp{\Gamma_1, \Gamma_2}{\children{p_1}{p_2}}{1}
     }
     \\\\
     \irule{wf-option}{
-    \wfp{\Gamma}{p}
+    \wfp{\Gamma}{p}{m}
     }{
-    \wfp{\omega \oplus \Gamma}{\maybe{p}}
+    \wfp{\omega \oplus \Gamma}{\maybe{p}}{\omega}
     }
     \quad
     \irule{wf-many}{
-    \wfp{\Gamma}{p}
+    \wfp{\Gamma}{p}{m}
     }{
-    \wfp{\omega \oplus \Gamma}{\many{p}}
+    \wfp{\omega \oplus \Gamma}{\many{p}}{\omega}
+    }
+  \end{array}
+\]
+%
+Negation \pnot{p} means ``consume one thing that does not match
+$p$'' and so it is only meaningful for patterns with multiplicity
+$1$ (for negation that does not consume we have \nfb{p}). Nested
+bindings are discarded.
+
+\[
+  \begin{array}{c}
+    \irule{wf-not}{
+    \wfp{\Gamma}{p}{1}
+    }{
+    \wfp{\epsilon}{\pnot{p}}{1}
     }
   \end{array}
 \]
@@ -935,21 +643,24 @@ the multiplicity of the underlying pattern. Actions are ignored.
 \[
   \begin{array}{c}
     \irule{wf-bind}{
-    \wfp{\Gamma}{p}
+    \wfp{\Gamma}{p}{m}
     \quad
     x \notin{\mathbf{dom}(\Gamma)}
     }{
-    \wfp{\Gamma, x : \mu(p)}{\bind{p}{x}}
+    \wfp{\Gamma, x : m}{\bind{p}{x}}{m}
     }
     \quad
     \irule{wf-action}{
-    \wfp{\Gamma}{p}
+    \wfp{\Gamma}{p}{m}
     }{
-    \wfp{\Gamma}{\paction{p}{f}}
+    \wfp{\Gamma}{\paction{p}{f}}{m}
     }
   \end{array}
 \]
-%
+
+
+\subsubsection{Aside: Matching Children of Several Terms}
+
 A different version of the children pattern allows the root to
 have any multiplicity, and then multiplies the bindings in the
 child pattern by that multiplicity. Note that this requires the
@@ -958,30 +669,29 @@ dynamic matching rule to fail when the root matches zero terms.
 \[
   \begin{array}{c}
     \irule{wf-children-alt}{
-    \mu(p_1) = m
+    \wfp{\Gamma_1}{p_1}{m_1}
     \quad
-    \wfp{\Gamma_1}{p_1}
-    \quad
-    \wfp{\Gamma_2}{p_2}\\
+    \wfp{\Gamma_2}{p_2}{m_2}\\
     \mathbf{dom}(\Gamma_1) \cap \mathbf{dom}(\Gamma_2) = \emptyset
     }{
-    \wfp{\Gamma_1, m \otimes \Gamma_2}{\children{p_1}{p_2}}
+    \wfp{\Gamma_1, m_1 \otimes \Gamma_2}{\children{p_1}{p_2}}{m_1}
     }
   \end{array}
 \]
 %
 What this gives us is the ability to concatenate the children of
-several terms. For example, we can get the first children of a
-$\mathit{foo}$ followed by a $\mathit{bar}$:
+several terms. For example, we can have ``get the first children
+of a $\mathit{foo}$ followed by a $\mathit{bar}$'':
 
 \[
-  \wfp{x : \omega}{\children{(\pseq{\mathit{foo}}{\mathit{bar}})}{(\bind{\any}{x})}}
+  \wfp{x : \omega}{\children{(\pseq{\mathit{foo}}{\mathit{bar}})}{(\bind{\any}{x})}}{\omega}
 \]
 %
 Note that the static rule for \many{p} already allows for the
 semantics that concatenates bindings under $p$.
 
-\subsection{Pattern Matching}
+\subsection{Dynamic Semantics}
+\label{sec:match:dyn}
 
 \[
   \begin{array}{rcl}
@@ -1021,6 +731,32 @@ semantics that concatenates bindings under $p$.
     % }
   \end{array}
 \]
+%
+During matching we are selecting a sequence of sibling terms. A
+term \Tmc{} is a term where one such sequence has been selected.
+We represent the subterm whose children are being matched as
+$(\lbl~\tms_{pre}~\select{\tms}~\tms_{post})$: a $\lbl$ term
+where some subsequence $\tms$ of its children has been selected,
+$\tms_{pre}$ being the terms before the match and $\tms_{post}$
+the terms after the match. Matching commences by looking at terms
+in $\tms_{post}$ and moving them into the matched sequence, or
+equivalently, advancing the cursor $\mend$. Note that the coloring
+has no semantic meaning.
+
+The result of matching, apart from moving the cursor $\mend$, is a
+set of bindings $\bindings$ which maps variables to sequences of
+terms.
+%
+%
+% If the same variable name is used more than once, the later
+% binding is preferred. We write $\extend{\bindings_1}{\bindings_2}$
+% to mean the union of $\bindings_1$ and $\bindings_2$ where
+% bindings from $\bindings_2$ override overlapping bindings from
+% $\bindings_1$:
+%
+% \[
+%     \extend{\bindings_1}{\bindings_2} = \bindings_2\cup \{x\mapsto \bindings_1(x) ~|~ x \in (\mathbf{dom}(\bindings_1)\setminus\mathbf{dom}(\bindings_2))\}
+% \]
 %
 The pattern matching rule takes the shape
 $\matches{p}{\Tmc_1}{\Tmc_2}{\bindings}$, where we start from
@@ -1078,8 +814,8 @@ term:
   \end{array}
 \]
 %
-The lookahead pattern $\fb{p}$ tries the pattern $p$, but does not
-advance the cursor nor remember bindings.
+The lookahead patterns $\fb{p}$ and $\nfb{p}$ tries the pattern
+$p$, but does not advance the cursor nor remember bindings.
 
 \[
   \begin{array}{c}
@@ -1090,42 +826,25 @@ advance the cursor nor remember bindings.
     {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
     {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
     }
-  \end{array}
-\]
-%
-Negation $\pnot{\phi}$ succeeds if the predicate $\phi$ does not
-succeed. It does not advance the cursor nor remember bindings.
-
-\[
-  \begin{array}{c}
-    \irule{match-not}{
-    \lnot(\matches{\phi}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings})
+    \\\\
+    \irule{match-not-followed-by}{
+    \lnot\left(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc}{\bindings}\right)
     }{
-    \xmatches{\pnot{\phi}}
+    \xmatches{\nfb{p}}
     {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
     {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\nobindings}
     }
   \end{array}
 \]
 %
-Matching on positive labels $\lbls$ succeeds if the label of the
-next term is in the pattern. Matching on negative labels $!\lbls$
-succeeds if the label of the next term is \emph{not} in $\lbls$.
-Matching on a wild-card \any{} always succeeds as long as there is
-a term to match on.
+Matching on labels $\lbl$ succeeds if the next label matches.
+Wildcards $\any$ always succeeds as long as there is a next term.
 
 \[
   \begin{array}{c}
-    \irule{match-labels}{
-    \lbl \in \lbls
+    \irule{match-label}{
     }{
-    \xmatches{\lbls}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}
-    {(\lbl_\pi~\tms_{pre}~\select{\tms~(\lbl~\tms')}~\tms_{post})}{\nobindings}
-    }
-    \\\\
-    \irule{match-not-labels}{\lbl \notin \lbls}{
-    \xmatches{!\lbls}
+    \xmatches{\lbl}
     {(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}
     {(\lbl_\pi~\tms_{pre}~\select{\tms~(\lbl~\tms')}~\tms_{post})}{\nobindings}
     }
@@ -1138,9 +857,9 @@ a term to match on.
   \end{array}
 \]
 %
-Matching choice $\por{p_1}{p_2}$ works as expected. Note that
-choice is \emph{ordered}, meaning the first pattern is preferred
-if both patterns match.
+Matching choice $\por{p_1}{p_2}$ works as expected, but is
+\emph{ordered}, meaning the first pattern is preferred if both
+patterns match.
 
 \[
   \begin{array}{c}
@@ -1199,6 +918,22 @@ result.
   \end{array}
 \]
 %
+Negation $\pnot{p}$ matches if there is a term to consume and the
+predicate $p$ does not match. It consumes one term but never
+remembers bindings.
+
+\[
+  \begin{array}{c}
+    \irule{match-not}{
+    \lnot\left(\matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}{\Tmc}{\bindings}\right)
+    }{
+    \xmatches{\pnot{p}}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms}~(\lbl~\tms')~\tms_{post})}
+    {(\lbl_\pi~\tms_{pre}~\select{\tms~(\lbl~\tms')}~\tms_{post})}{\nobindings}
+    }
+  \end{array}
+\]
+%
 Optional matches $\maybe{p}$ always succeed, but matches $p$ if
 possible.
 
@@ -1224,13 +959,16 @@ possible.
 \]
 %
 Repetition of a pattern $\many{p}$ will greedily match $p$ as many
-times as possible, preferring later bindings to earlier:
+times as possible, but requires that progress is made for each
+match.
 
 \[
   \begin{array}{c}
     \irule{match-many-more}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc_1}{\bindings_1}\\
-    \matches{\many{p}}{\Tmc_1}{\Tmc_2}{\bindings_2}
+    \xmatches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+                {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}
+    \quad\tms' \neq \epsilon\\
+    \matches{\many{p}}{(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\Tmc_2}{\bindings_2}
     }{
     \matches{\many{p}}
     {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
@@ -1249,13 +987,13 @@ times as possible, preferring later bindings to earlier:
 %
 An action pattern $\paction{p}{f}$ comes equipped with a function
 $f : \tms \mapsto \mathbf{bool}$ which must return $\mathbf{true}$
-for the matched pattern:
+for the matched pattern.
 
 \[
   \begin{array}{c}
     \irule{match-action}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
-               {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}\\
+    \xmatches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+                {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}\\
     f(\tms') = \mathbf{true}
     }{
     \xmatches{\paction{p}{f}}
@@ -1266,7 +1004,7 @@ for the matched pattern:
 \]
 %
 As with parsing, we use contexts to ``zoom in'' until we can apply
-a matching rule:
+a matching rule.
 
 \[
   \begin{array}{c}
@@ -1277,7 +1015,9 @@ a matching rule:
     }
   \end{array}
 \]
-%
+
+\subsubsection{Aside: Matching Children of Several Terms}
+
 We can allow an alternative semantics for children and repetition,
 in which repeated bindings are concatenated. Note that we require
 the root of children to match at least one term.
@@ -1285,8 +1025,10 @@ the root of children to match at least one term.
 \[
   \begin{array}{c}
     \irule{match-many-more-alt}{
-    \matches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}{\Tmc_1}{\bindings_1}\\
-    \matches{\many{p}}{\Tmc_1}{\Tmc_2}{\bindings_2}
+    \xmatches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+                {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}
+    \quad\tms' \neq \epsilon\\
+    \matches{\many{p}}{(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\Tmc_2}{\bindings_2}
     }{
     \matches{\many{p}}
     {(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
@@ -1334,7 +1076,110 @@ results of their overlapping bindings.
   \end{array}
 \]
 
+\subsection{Soundness}
 
+We say that a multiplicity $m$ describes a sequence of terms
+$\tms$ if the length of $\tms$ is the same as $m$ (where $\omega$
+is any length).
+
+\[
+  \begin{array}{c}
+    \irule{mult-0}{
+
+    }{
+    0 \vdash \epsilon
+    }
+    \quad
+    \irule{mult-1}{
+
+    }{
+    1 \vdash (\lbl~\tms)
+    }
+    \quad
+    \irule{mult-$\omega$}{
+
+    }{
+    \omega \vdash \tms
+    }
+  \end{array}
+\]
+%
+A set of bindings $\bindings$ is well-formed under some $\Gamma$
+if the value of every binding is described by the corresponding
+mapping in $\Gamma$:
+
+\[
+  \begin{array}{c}
+    \irule{wf-bindings-cons}{
+    \Gamma \vdash \bindings\quad
+    m \vdash \tms
+    }{
+    \Gamma, x : m \vdash \bindings \cup \{x \mapsto \tms\}
+    }
+    \quad
+    \irule{wf-bindings-empty}{
+    }{
+    \epsilon \vdash \nobindings
+    }
+  \end{array}
+\]
+%
+We define soundness of pattern matching to mean that a matching
+pattern, well-formed under $\Gamma$ with multiplicity $m$ consumes
+a sequence of terms whose length is described by $m$. In addition,
+the bindings produced are well-formed under $\Gamma$.
+
+\[
+  \begin{array}{l}
+    \begin{array}{l}
+    \wfp{\Gamma}{p}{m}~~~\land\\
+      ~
+    \end{array}
+    \xmatches{p}{(\lbl_\pi~\tms_{pre}~\select{\tms}~\tms_{post})}
+                {(\lbl_\pi~\tms_{pre}~\select{\tms~\tms'}~\tms'_{post})}{\bindings}
+    \\
+    \quad\implies\\
+    \qquad m \vdash \tms' ~\land~ \Gamma \vdash \bindings
+  \end{array}
+\]
+
+\subsection{Alternative with Simpler Negation}
+
+\[
+  \begin{array}{crll}
+    \arrayheading{4}{Predicates}\\
+      \phi & ::= & \fb{p}      & \text{followed by}         \\
+           & ~|~ & \pin{\lbl}  & \text{appears as child of} \\
+           & ~|~ & \pstart{}   & \text{before all children} \\
+           & ~|~ & \pend{}     & \text{after all children}  \\
+           & ~|~ & \pnot{\phi} & \text{negation}            \\
+    \\
+    \arrayheading{4}{Patterns}\\
+      p & ::= & \phi            & \text{predicate}                          \\
+        & ~|~ & \lbls           & \text{a term with a label in $\lbls$}     \\
+        & ~|~ & !\lbls          & \text{a term with a label \emph{not} in $\lbls$}     \\
+        & ~|~ & \any{}          & \text{any single term}                    \\
+        & ~|~ & \por{p}{p}      & \text{choice}                             \\
+        & ~|~ & \pseq{p}{p}     & \text{sequence}                           \\
+        & ~|~ & \children{p}{p} & \text{children}                           \\
+        & ~|~ & \maybe{p}       & \text{option}                             \\
+        & ~|~ & \many{p}        & \text{repetition}                         \\
+        & ~|~ & \bind{p}{x}     & \text{bind}                               \\
+        & ~|~ & \paction{p}{f}  & \text{action}                             \\
+    \\
+    \arrayheading{4}{Multiplicities}\\
+    \Gamma & ::= & \Gamma, x : m ~|~ \epsilon & \text{multiplicity mapping}\\
+    m      & ::= & 0 ~|~ 1 ~|~ \omega & \text{multiplicities}
+  \end{array}
+\]
+%
+In this version, negation only exists for predicates (meaning
+there is only one matching rule for negation). The case of
+matching a single term whose label is \emph{not} among a set of
+labels is done by a special term $!\lbls$.
+
+This formulation requires a workaround for the pattern\\
+$\many{(\pnot{(\por{(\children{\mathit{foo}}{p_1})}{(\children{\mathit{bar}}{p_2})})})}$
 \subsection{Thoughts}
 
 \begin{itemize}
@@ -1409,14 +1254,41 @@ Things that appear in the wild
 
 \section{Term Rewriting}
 
+After we have selected some part of a term via pattern matching,
+term rewriting replaces the selected part with a sequence of
+terms, possibly built using variables which are replaced by their
+corresponding bindings found during pattern matching. In other
+words, term rewriting is a function from $\Tmc$ to $\tm$.
+
+We will need:
+
+\begin{itemize}
+\item A definition of symbolic terms $\Tmx$ which may contain variables
+\item Well-formed symbolic terms $\Gamma \vdash \Tmx$
+\item A relation that takes a $\Tmc$, a $\Tmx$ and a $\bindings$
+  to $\tm$ (possibly to another $\Tmc$, where the cursor is right
+  before or right after the previous selection)
+\item A relation that tries a selection of patterns with
+  associated symbolic terms and then \RED{advances the cursor}.
+\end{itemize}
+
+\section{Pass Specifications}
+
+Well-formedness rules
 
 \section*{TODO}
 
 \begin{itemize}
-\item Top-down vs. Bottom-up
+\item Top-down vs. Bottom-up. Also Breadth-first vs. Depth-first!
+  \begin{itemize}
+  \item If we go breadth first, once we have finished processing
+    one layer of terms during rewriting, each sibling in the next
+    layer can be processed in parallel!
+  \end{itemize}
 \item Regex matching (requires carrying data)
 \item Well-formedness
-\item Symbol tables?
+\item Symbol tables
+\item Location information, error reporting
 \end{itemize}
 
 \section*{Quiz}
