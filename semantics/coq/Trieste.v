@@ -9,72 +9,43 @@ Local Hint Resolve Forall_nil : trieste.
 Local Hint Constructors Forall : trieste.
 Local Hint Resolve Forall_last_inv : trieste.
 
-(*
 Section MiniTrieste.
-  Inductive pattern :=
-  | PatNat: nat -> pattern
-  | PatNot: pattern -> pattern
-  | PatChoice: pattern -> pattern -> pattern.
+  Inductive mini_pattern :=
+  | MiniPatNat: nat -> mini_pattern
+  | MiniPatNot: mini_pattern -> mini_pattern
+  | MiniPatChoice: mini_pattern -> mini_pattern -> mini_pattern.
 
-  Inductive match_pattern: pattern -> nat -> option nat -> Prop :=
-  | MatchNat:
+  Inductive match_mini_pattern: mini_pattern -> nat -> option nat -> Prop :=
+  | MiniMatchNat:
     forall n,
-      match_pattern (PatNat n) n (Some n)
-  | NoMatchNat:
+      match_mini_pattern (MiniPatNat n) n (Some n)
+  | MiniNoMatchNat:
     forall n m,
       n <> m ->
-      match_pattern (PatNat n) m None
-  | MatchNot:
+      match_mini_pattern (MiniPatNat n) m None
+  | MiniMatchNot:
     forall p n,
-      match_pattern p n None ->
-      match_pattern (PatNot p) n (Some n)
-  | NoMatchNot:
+      match_mini_pattern p n None ->
+      match_mini_pattern (MiniPatNot p) n (Some n)
+  | MiniNoMatchNot:
     forall p n,
-      match_pattern p n (Some n) ->
-      match_pattern (PatNot p) n None
-  | MatchChoiceL:
+      match_mini_pattern p n (Some n) ->
+      match_mini_pattern (MiniPatNot p) n None
+  | MiniMatchChoiceL:
     forall p1 p2 n,
-      match_pattern p1 n (Some n) ->
-      match_pattern (PatChoice p1 p2) n (Some n)
-  | MatchChoiceR:
+      match_mini_pattern p1 n (Some n) ->
+      match_mini_pattern (MiniPatChoice p1 p2) n (Some n)
+  | MiniMatchChoiceR:
     forall p1 p2 n m,
-      match_pattern p1 n None ->
-      match_pattern p2 n (Some m) ->
-      match_pattern (PatChoice p1 p2) n (Some m)
-  | NoMatchChoice:
+      match_mini_pattern p1 n None ->
+      match_mini_pattern p2 n (Some m) ->
+      match_mini_pattern (MiniPatChoice p1 p2) n (Some m)
+  | MiniNoMatchChoice:
     forall p1 p2 n,
-      match_pattern p1 n None ->
-      match_pattern p2 n None ->
-      match_pattern (PatChoice p1 p2) n None.
-
-  Theorem nomatch_pattern_is_negation:
-    forall p n m,
-      match_pattern p n None ->
-      ~match_pattern p n (Some m).
-  Proof using.
-    introv Hnmatch contra.
-    induction p.
-    - inverts Hnmatch. inverts* contra.
-    - inverts Hnmatch. inverts* contra.
-    - inverts Hnmatch. inverts* contra.
-  Qed.
-
-  Theorem match_pattern_is_deterministic:
-    forall p n res1 res2,
-      match_pattern p n res1 ->
-      match_pattern p n res2 ->
-      res1 = res2.
-  Proof using.
-    introv Hmatch1 Hmatch2.
-    gen res2. induction Hmatch1; intros; inverts* Hmatch2.
-    - forwards* contra: IHHmatch1.
-    - forwards* contra: IHHmatch1.
-    - forwards* contra: IHHmatch1. inverts contra.
-    - forwards* contra: IHHmatch1_1. inverts contra.
-  Qed.
-
+      match_mini_pattern p1 n None ->
+      match_mini_pattern p2 n None ->
+      match_mini_pattern (MiniPatChoice p1 p2) n None.
 End MiniTrieste.
-*)
 
 Section Trieste.
   Variable label : Type.
@@ -176,7 +147,7 @@ Section Trieste.
     simpls;
     nat_math.
 
-  Hint Extern 0 =>
+  Hint Extern 2 =>
     match goal with
       _ : _ |- term_size _ < term_size _ => solve_IH
     end : trieste.
@@ -796,590 +767,209 @@ Section Trieste.
 
   Definition bindings := LibEnv.env (list term).
 
-  Inductive match_pattern : pattern -> term -> term -> bindings -> Prop :=
-  | MatchCtx:
-    forall p pi pre tm1 tm2 post M,
-      (* TODO: I would rather not have the Foralls here *)
-      Forall is_term pre ->
-      Forall is_term post ->
-      match_pattern p tm1 tm2 M ->
-      match_pattern p (Tm pi (pre & tm1 ++ post))
-                      (Tm pi (pre & tm2 ++ post)) M
-  | MatchBind:
-    forall p pi pre tms tms' post post' x M,
-      match_pattern p (Tm pi (pre |> tms <| post))
-                      (Tm pi (pre |> tms ++ tms' <| post')) M ->
-      match_pattern (PatBind p x)
-                    (Tm pi (pre |> tms <| post))
-                    (Tm pi (pre |> tms ++ tms' <| post')) (M & x ~ tms')
-  | MatchStart:
-    forall pi post,
-      match_pattern PatStart
-                    (Tm pi (|> <| post))
-                    (Tm pi (|> <| post)) empty
-  | MatchEnd:
-    forall pi pre,
-      match_pattern PatEnd
-                    (Tm pi (pre |> <|))
-                    (Tm pi (pre |> <|)) empty
-  | MatchIn:
-      forall pi pre tms post,
-        match_pattern (PatIn pi) (Tm pi (pre |> tms <| post))
-                                 (Tm pi (pre |> tms <| post)) empty
-  | MatchFB:
-      forall p pi pre tms post tm M,
-        match_pattern p (Tm pi (pre |> tms <| post)) tm M ->
-        match_pattern (PatFB p) (Tm pi (pre |> tms <| post))
-                                (Tm pi (pre |> tms <| post)) empty
-  | MatchNFB:
-      forall p pi pre tms post,
-        nomatch_pattern p (Tm pi (pre |> tms <| post)) ->
-        match_pattern (PatNFB p) (Tm pi (pre |> tms <| post))
-                                 (Tm pi (pre |> tms <| post)) empty
-  | MatchLabel:
-      forall lbl pi pre tms tms' post,
-        match_pattern (PatLabel lbl) (Tm pi (pre |> tms <| Tm lbl tms' :: post))
-                                     (Tm pi (pre |> tms & Tm lbl tms' <| post)) empty
-  | MatchAny:
-      forall pi pre tms post tm,
-        match_pattern (PatAny) (Tm pi (pre |> tms <| tm :: post))
-                               (Tm pi (pre |> tms & tm <| post)) empty
-  | MatchChoiceL:
-    forall p1 p2 pi pre tms post tm M,
-      match_pattern p1 (Tm pi (pre |> tms <| post)) tm M ->
-      match_pattern (PatChoice p1 p2) (Tm pi (pre |> tms <| post)) tm M
-  | MatchChoiceR:
-    forall p1 p2 pi pre tms post tm M,
-      nomatch_pattern p1 (Tm pi (pre |> tms <| post)) ->
-      match_pattern p2 (Tm pi (pre |> tms <| post)) tm M ->
-      match_pattern (PatChoice p1 p2) (Tm pi (pre |> tms <| post)) tm M
-  | MatchSeq:
-    forall p1 p2 pi pre tms post tm1 tm2 M1 M2,
-      match_pattern p1 (Tm pi (pre |> tms <| post)) tm1 M1 ->
-      match_pattern p2 tm1 tm2 M2 ->
-      match_pattern (PatSeq p1 p2) (Tm pi (pre |> tms <| post)) tm2 (M1 & M2)
-  | MatchChildren:
-    forall p1 p2 pi pre tms tms' post lbl tm M1 M2,
-      match_pattern p1 (Tm pi (pre |> tms <| Tm lbl tms' :: post))
-                       (Tm pi (pre |> tms & Tm lbl tms' <| post)) M1 ->
-      match_pattern p2 (Tm lbl (|> <| tms')) tm M2 ->
-      match_pattern (PatChildren p1 p2)
-                    (Tm pi (pre |> tms <| Tm lbl tms' :: post))
-                    (Tm pi (pre |> tms & Tm lbl tms' <| post)) (M1 & M2)
-  | MatchNot:
-    forall p pi pre tms post tm,
-      nomatch_pattern p (Tm pi (pre |> tms <| tm :: post)) ->
-      match_pattern (PatNeg p) (Tm pi (pre |> tms <| tm :: post))
-                               (Tm pi (pre |> tms & tm <| post)) empty
-  | MatchOptionYes:
-    forall p pi pre tms post tm M,
-      match_pattern p (Tm pi (pre |> tms <| post)) tm M ->
-      match_pattern (PatOption p) (Tm pi (pre |> tms <| post))
-                                  tm M
-  | MatchOptionNo:
-    forall p pi pre tms post,
-      nomatch_pattern p (Tm pi (pre |> tms <| post)) ->
-      match_pattern (PatOption p) (Tm pi (pre |> tms <| post))
-                                  (Tm pi (pre |> tms <| post)) empty
-  | MatchManyMore:
-    forall p pi pre tms tms' post post' tm M1 M2,
-      match_pattern p (Tm pi (pre |> tms <| post))
-                      (Tm pi (pre |> tms ++ tms' <| post')) M1 ->
-      tms' <> nil ->
-      match_pattern (PatMany p) (Tm pi (pre |> tms ++ tms' <| post')) tm M2 ->
-      match_pattern (PatMany p) (Tm pi (pre |> tms <| post)) tm (M1 & M2)
-  | MatchManyDone:
-    forall p pi pre tms post,
-      nomatch_pattern p (Tm pi (pre |> tms <| post)) ->
-      match_pattern (PatMany p) (Tm pi (pre |> tms <| post))
-                                (Tm pi (pre |> tms <| post)) empty
-  | MatchAction:
-    forall p f pi pre tms tms' post post' M,
-      match_pattern p (Tm pi (pre |> tms <| post))
-                      (Tm pi (pre |> tms ++ tms' <| post')) M ->
-      f tms' = true ->
-      match_pattern (PatAction p f) (Tm pi (pre |> tms <| post))
-                                    (Tm pi (pre |> tms ++ tms' <| post')) M
-  with
-    nomatch_pattern : pattern -> term -> Prop :=
-    (* TODO: Generalize? *)
-    | NoMatchBind:
-      forall p pi pre tms post x,
-        nomatch_pattern p (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern (PatBind p x) (Tm pi (pre |> tms <| post))
-    | NoMatchStart:
-      forall pi pre tms post,
-        pre ++ tms <> nil ->
-        nomatch_pattern PatStart (Tm pi (pre |> tms <| post))
-    | NoMatchEnd:
-      forall pi pre tms post,
-        tms ++ post <> nil ->
-        nomatch_pattern PatEnd (Tm pi (pre |> tms <| post))
-    | NoMatchIn:
-      forall lbl pi pre tms post,
-        lbl <> pi ->
-        nomatch_pattern (PatIn lbl) (Tm pi (pre |> tms <| post))
-    | NoMatchFB:
-      forall p pi pre tms post,
-        nomatch_pattern p (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern (PatFB p) (Tm pi (pre |> tms <| post))
-    | NoMatchNFB:
-      forall p pi pre tms post tm M,
-        match_pattern p (Tm pi (pre |> tms <| post)) tm M ->
-        nomatch_pattern (PatNFB p) (Tm pi (pre |> tms <| post))
-    | NoMatchLabel:
-      forall lbl lbl' pi pre tms tms' post,
-        lbl <> lbl' ->
-        nomatch_pattern (PatLabel lbl) (Tm pi (pre |> tms <| Tm lbl' tms' :: post))
-    | NoMatchAny:
-      forall pi pre tms,
-        nomatch_pattern (PatAny) (Tm pi (pre |> tms <|))
-    | NoMatchChoice:
-      forall p1 p2 pi pre tms post,
-        nomatch_pattern p1 (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern p2 (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern (PatChoice p1 p2) (Tm pi (pre |> tms <| post))
-    | NoMatchSeqL:
-      forall p1 p2 pi pre tms post,
-        nomatch_pattern p1 (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern (PatSeq p1 p2) (Tm pi (pre |> tms <| post))
-    | NoMatchSeqR:
-      forall p1 p2 pi pre tms post tm1 M1,
-        match_pattern p1 (Tm pi (pre |> tms <| post)) tm1 M1 ->
-        nomatch_pattern p2 tm1 ->
-        nomatch_pattern (PatSeq p1 p2) (Tm pi (pre |> tms <| post))
-    | NoMatchChildrenL:
-      forall p1 p2 pi pre tms post,
-        nomatch_pattern p1 (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern (PatChildren p1 p2) (Tm pi (pre |> tms <| post))
-    | NoMatchChildrenL2:
-      forall p1 p2 pi pre tms tms' post post' M,
-        match_pattern p1 (Tm pi (pre |> tms <| post))
-                         (Tm pi (pre |> tms ++ tms' <| post')) M ->
-        length tms' <> 1 ->
-        nomatch_pattern (PatChildren p1 p2) (Tm pi (pre |> tms <| post))
-    | NoMatchChildrenR:
-      forall p1 p2 pi pre tms tms' post lbl M,
-        match_pattern p1 (Tm pi (pre |> tms <| Tm lbl tms' :: post))
-                         (Tm pi (pre |> tms & Tm lbl tms' <| post)) M ->
-        nomatch_pattern p2 (Tm lbl (|> <| tms')) ->
-        nomatch_pattern (PatChildren p1 p2) (Tm pi (pre |> tms <| Tm lbl tms' :: post))
-    | NoMatchNot:
-      forall p pi pre tms post tm M,
-        match_pattern p (Tm pi (pre |> tms <| tm :: post))
-                        (Tm pi (pre |> tms & tm <| post)) M ->
-        nomatch_pattern (PatNeg p) (Tm pi (pre |> tms <| tm :: post))
-    | NoMatchAction:
-      forall p pi pre tms post f,
-        nomatch_pattern p (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern (PatAction p f) (Tm pi (pre |> tms <| post))
-    | NoMatchActionFun:
-      forall p pi pre tms tms' post post' M f,
-        match_pattern p (Tm pi (pre |> tms <| post))
-                        (Tm pi (pre |> tms ++ tms' <| post')) M ->
-        f tms' = false ->
-        nomatch_pattern (PatAction p f) (Tm pi (pre |> tms <| post)).
-
-  Scheme match_pattern_mut := Induction for match_pattern Sort Prop
-    with nomatch_pattern_mut := Induction for nomatch_pattern Sort Prop.
-
-  Inductive match_pattern' : pattern -> term -> option (term * bindings) -> Prop :=
+  Inductive match_pattern : pattern -> term -> option (term * bindings) -> Prop :=
   | MatchCtx':
     forall p pi pre tm1 tm2 post M,
       (* TODO: I would rather not have the Foralls here *)
       Forall is_term pre ->
       Forall is_term post ->
-      match_pattern' p tm1 (Some (tm2, M)) ->
-      match_pattern' p (Tm pi (pre & tm1 ++ post))
+      match_pattern p tm1 (Some (tm2, M)) ->
+      match_pattern p (Tm pi (pre & tm1 ++ post))
                  (Some (Tm pi (pre & tm2 ++ post), M))
   | NoMatchCtx':
     forall p pi pre tm post,
       (* TODO: I would rather not have the Foralls here *)
       Forall is_term pre ->
       Forall is_term post ->
-      match_pattern' p tm None ->
-      match_pattern' p (Tm pi (pre & tm ++ post))
+      match_pattern p tm None ->
+      match_pattern p (Tm pi (pre & tm ++ post))
                        None
   | MatchBind':
     forall p pi pre tms tms' post post' x M,
-      match_pattern' p (Tm pi (pre |> tms <| post))
+      match_pattern p (Tm pi (pre |> tms <| post))
                  (Some (Tm pi (pre |> tms ++ tms' <| post'), M)) ->
-      match_pattern' (PatBind p x)
+      match_pattern (PatBind p x)
                      (Tm pi (pre |> tms <| post))
                (Some (Tm pi (pre |> tms ++ tms' <| post'), M & x ~ tms'))
   | NoMatchBind':
     forall p pi pre tms post x,
-      match_pattern' p (Tm pi (pre |> tms <| post)) None ->
-      match_pattern' (PatBind p x)
+      match_pattern p (Tm pi (pre |> tms <| post)) None ->
+      match_pattern (PatBind p x)
                      (Tm pi (pre |> tms <| post)) None
   | MatchStart':
     forall pi post,
-      match_pattern' PatStart
+      match_pattern PatStart
                      (Tm pi (|> <| post))
                (Some (Tm pi (|> <| post), empty))
   | NoMatchStart':
     forall pi pre tms post,
       pre ++ tms <> nil ->
-      match_pattern' PatStart
+      match_pattern PatStart
                      (Tm pi (pre |> tms <| post)) None
   | MatchEnd':
     forall pi pre,
-      match_pattern' PatEnd
+      match_pattern PatEnd
                      (Tm pi (pre |> <|))
                (Some (Tm pi (pre |> <|), empty))
   | NoMatchEnd':
     forall pi pre tms post,
       tms ++ post <> nil ->
-      match_pattern' PatEnd
+      match_pattern PatEnd
                      (Tm pi (pre |> tms <| post)) None
   | MatchIn':
       forall pi pre tms post,
-        match_pattern' (PatIn pi)
+        match_pattern (PatIn pi)
                        (Tm pi (pre |> tms <| post))
                  (Some (Tm pi (pre |> tms <| post), empty))
   | NoMatchIn':
       forall pi lbl pre tms post,
         lbl <> pi ->
-        match_pattern' (PatIn lbl) (Tm pi (pre |> tms <| post)) None
+        match_pattern (PatIn lbl) (Tm pi (pre |> tms <| post)) None
   | MatchFB':
       forall p pi pre tms post tm M,
-        match_pattern' p (Tm pi (pre |> tms <| post)) (Some (tm, M)) ->
-        match_pattern' (PatFB p)
+        match_pattern p (Tm pi (pre |> tms <| post)) (Some (tm, M)) ->
+        match_pattern (PatFB p)
                        (Tm pi (pre |> tms <| post))
                  (Some (Tm pi (pre |> tms <| post), empty))
   | NoMatchFB':
       forall p pi pre tms post,
-        match_pattern' p (Tm pi (pre |> tms <| post)) None ->
-        match_pattern' (PatFB p)
+        match_pattern p (Tm pi (pre |> tms <| post)) None ->
+        match_pattern (PatFB p)
                        (Tm pi (pre |> tms <| post)) None
   | MatchNFB':
       forall p pi pre tms post,
-        match_pattern' p (Tm pi (pre |> tms <| post)) None ->
-        match_pattern' (PatNFB p) (Tm pi (pre |> tms <| post))
+        match_pattern p (Tm pi (pre |> tms <| post)) None ->
+        match_pattern (PatNFB p) (Tm pi (pre |> tms <| post))
                             (Some (Tm pi (pre |> tms <| post), empty))
   | NoMatchNFB':
       forall p pi pre tms post tup,
-        match_pattern' p (Tm pi (pre |> tms <| post)) (Some tup) ->
-        match_pattern' (PatNFB p)
+        match_pattern p (Tm pi (pre |> tms <| post)) (Some tup) ->
+        match_pattern (PatNFB p)
                        (Tm pi (pre |> tms <| post)) None
   | MatchLabel':
       forall lbl pi pre tms tms' post,
-        match_pattern' (PatLabel lbl)
+        match_pattern (PatLabel lbl)
                        (Tm pi (pre |> tms <| Tm lbl tms' :: post))
                  (Some (Tm pi (pre |> tms & Tm lbl tms' <| post), empty))
   | NoMatchLabel':
       forall lbl lbl' pi pre tms tms' post,
         lbl <> lbl' ->
-        match_pattern' (PatLabel lbl)
+        match_pattern (PatLabel lbl)
                        (Tm pi (pre |> tms <| Tm lbl' tms' :: post)) None
   | MatchAny':
       forall pi pre tms post tm,
-        match_pattern' (PatAny)
+        match_pattern (PatAny)
                        (Tm pi (pre |> tms <| tm :: post))
                  (Some (Tm pi (pre |> tms & tm <| post), empty))
   | NoMatchAny':
       forall pi pre tms,
-        match_pattern' (PatAny)
+        match_pattern (PatAny)
                        (Tm pi (pre |> tms <|)) None
   | MatchChoiceL':
     forall p1 p2 pi pre tms post tm M,
-      match_pattern' p1 (Tm pi (pre |> tms <| post)) (Some (tm, M)) ->
-      match_pattern' (PatChoice p1 p2) (Tm pi (pre |> tms <| post)) (Some (tm, M))
+      match_pattern p1 (Tm pi (pre |> tms <| post)) (Some (tm, M)) ->
+      match_pattern (PatChoice p1 p2) (Tm pi (pre |> tms <| post)) (Some (tm, M))
   | MatchChoiceR':
     forall p1 p2 pi pre tms post tm M,
-      match_pattern' p1 (Tm pi (pre |> tms <| post)) None ->
-      match_pattern' p2 (Tm pi (pre |> tms <| post)) (Some (tm, M)) ->
-      match_pattern' (PatChoice p1 p2) (Tm pi (pre |> tms <| post)) (Some (tm, M))
+      match_pattern p1 (Tm pi (pre |> tms <| post)) None ->
+      match_pattern p2 (Tm pi (pre |> tms <| post)) (Some (tm, M)) ->
+      match_pattern (PatChoice p1 p2) (Tm pi (pre |> tms <| post)) (Some (tm, M))
   | NoMatchChoice':
     forall p1 p2 pi pre tms post,
-      match_pattern' p1 (Tm pi (pre |> tms <| post)) None ->
-      match_pattern' p2 (Tm pi (pre |> tms <| post)) None ->
-      match_pattern' (PatChoice p1 p2) (Tm pi (pre |> tms <| post)) None
+      match_pattern p1 (Tm pi (pre |> tms <| post)) None ->
+      match_pattern p2 (Tm pi (pre |> tms <| post)) None ->
+      match_pattern (PatChoice p1 p2) (Tm pi (pre |> tms <| post)) None
   | MatchSeq':
     forall p1 p2 pi pre tms post tm1 tm2 M1 M2,
-      match_pattern' p1 (Tm pi (pre |> tms <| post)) (Some (tm1, M1)) ->
-      match_pattern' p2 tm1 (Some (tm2, M2)) ->
-      match_pattern' (PatSeq p1 p2) (Tm pi (pre |> tms <| post)) (Some (tm2, (M1 & M2)))
+      match_pattern p1 (Tm pi (pre |> tms <| post)) (Some (tm1, M1)) ->
+      match_pattern p2 tm1 (Some (tm2, M2)) ->
+      match_pattern (PatSeq p1 p2) (Tm pi (pre |> tms <| post)) (Some (tm2, (M1 & M2)))
   | NoMatchSeqL':
     forall p1 p2 pi pre tms post,
-      match_pattern' p1 (Tm pi (pre |> tms <| post)) None ->
-      match_pattern' (PatSeq p1 p2) (Tm pi (pre |> tms <| post)) None
+      match_pattern p1 (Tm pi (pre |> tms <| post)) None ->
+      match_pattern (PatSeq p1 p2) (Tm pi (pre |> tms <| post)) None
   | NoMatchSeqR':
     forall p1 p2 pi pre tms post tm1 M1,
-      match_pattern' p1 (Tm pi (pre |> tms <| post)) (Some (tm1, M1)) ->
-      match_pattern' p2 tm1 None ->
-      match_pattern' (PatSeq p1 p2) (Tm pi (pre |> tms <| post)) None
+      match_pattern p1 (Tm pi (pre |> tms <| post)) (Some (tm1, M1)) ->
+      match_pattern p2 tm1 None ->
+      match_pattern (PatSeq p1 p2) (Tm pi (pre |> tms <| post)) None
   | MatchChildren':
     forall p1 p2 pi pre tms tms' post lbl tm M1 M2,
-      match_pattern' p1
+      match_pattern p1
                      (Tm pi (pre |> tms <| Tm lbl tms' :: post))
                (Some (Tm pi (pre |> tms & Tm lbl tms' <| post), M1)) ->
-      match_pattern' p2 (Tm lbl (|> <| tms')) (Some (tm, M2)) ->
-      match_pattern' (PatChildren p1 p2)
+      match_pattern p2 (Tm lbl (|> <| tms')) (Some (tm, M2)) ->
+      match_pattern (PatChildren p1 p2)
                     (Tm pi (pre |> tms <| Tm lbl tms' :: post))
               (Some (Tm pi (pre |> tms & Tm lbl tms' <| post), M1 & M2))
   | NoMatchChildrenL':
     forall p1 p2 pi pre tms post,
-      match_pattern' p1 (Tm pi (pre |> tms <| post)) None ->
-      match_pattern' (PatChildren p1 p2) (Tm pi (pre |> tms <| post)) None
+      match_pattern p1 (Tm pi (pre |> tms <| post)) None ->
+      match_pattern (PatChildren p1 p2) (Tm pi (pre |> tms <| post)) None
   | NoMatchChildrenL2':
     forall p1 p2 pi pre tms tms' post post' M,
-      match_pattern' p1 (Tm pi (pre |> tms <| post))
+      match_pattern p1 (Tm pi (pre |> tms <| post))
                   (Some (Tm pi (pre |> tms ++ tms' <| post'), M)) ->
       length tms' <> 1 ->
-      match_pattern' (PatChildren p1 p2) (Tm pi (pre |> tms <| post)) None
+      match_pattern (PatChildren p1 p2) (Tm pi (pre |> tms <| post)) None
   | NoMatchChildrenR':
     forall p1 p2 pi pre tms tms' post lbl M,
-      match_pattern' p1 (Tm pi (pre |> tms <| Tm lbl tms' :: post))
+      match_pattern p1 (Tm pi (pre |> tms <| Tm lbl tms' :: post))
                   (Some (Tm pi (pre |> tms & Tm lbl tms' <| post), M)) ->
-      match_pattern' p2 (Tm lbl (|> <| tms')) None ->
-      match_pattern' (PatChildren p1 p2)
+      match_pattern p2 (Tm lbl (|> <| tms')) None ->
+      match_pattern (PatChildren p1 p2)
                      (Tm pi (pre |> tms <| Tm lbl tms' :: post)) None
   | MatchNot':
     forall p pi pre tms post tm,
-      match_pattern' p (Tm pi (pre |> tms <| tm :: post)) None ->
-      match_pattern' (PatNeg p) (Tm pi (pre |> tms <| tm :: post))
+      match_pattern p (Tm pi (pre |> tms <| tm :: post)) None ->
+      match_pattern (PatNeg p) (Tm pi (pre |> tms <| tm :: post))
                           (Some (Tm pi (pre |> tms & tm <| post), empty))
   | NoMatchNot':
     forall p pi pre tms post tm tup,
-      match_pattern' p (Tm pi (pre |> tms <| tm :: post)) (Some tup) ->
-      match_pattern' (PatNeg p) (Tm pi (pre |> tms <| tm :: post)) None
+      match_pattern p (Tm pi (pre |> tms <| tm :: post)) (Some tup) ->
+      match_pattern (PatNeg p) (Tm pi (pre |> tms <| tm :: post)) None
   | MatchOptionYes':
     forall p pi pre tms post tm M,
-      match_pattern' p (Tm pi (pre |> tms <| post)) (Some (tm, M)) ->
-      match_pattern' (PatOption p) (Tm pi (pre |> tms <| post))
+      match_pattern p (Tm pi (pre |> tms <| post)) (Some (tm, M)) ->
+      match_pattern (PatOption p) (Tm pi (pre |> tms <| post))
                                    (Some (tm, M))
   | MatchOptionNo':
     forall p pi pre tms post,
-      match_pattern' p (Tm pi (pre |> tms <| post)) None ->
-      match_pattern' (PatOption p) (Tm pi (pre |> tms <| post))
+      match_pattern p (Tm pi (pre |> tms <| post)) None ->
+      match_pattern (PatOption p) (Tm pi (pre |> tms <| post))
                              (Some (Tm pi (pre |> tms <| post), empty))
   | MatchManyMore':
     forall p pi pre tms tms' post post' tm M1 M2,
-      match_pattern' p (Tm pi (pre |> tms <| post))
+      match_pattern p (Tm pi (pre |> tms <| post))
                  (Some (Tm pi (pre |> tms ++ tms' <| post'), M1)) ->
       tms' <> nil ->
-      match_pattern' (PatMany p) (Tm pi (pre |> tms ++ tms' <| post'))
+      match_pattern (PatMany p) (Tm pi (pre |> tms ++ tms' <| post'))
                                  (Some (tm, M2)) ->
-      match_pattern' (PatMany p) (Tm pi (pre |> tms <| post)) (Some (tm, (M1 & M2)))
+      match_pattern (PatMany p) (Tm pi (pre |> tms <| post)) (Some (tm, (M1 & M2)))
   | MatchManyDone':
     forall p pi pre tms post,
-      match_pattern' p (Tm pi (pre |> tms <| post)) None ->
-      match_pattern' (PatMany p) (Tm pi (pre |> tms <| post))
+      match_pattern p (Tm pi (pre |> tms <| post)) None ->
+      match_pattern (PatMany p) (Tm pi (pre |> tms <| post))
                            (Some (Tm pi (pre |> tms <| post), empty))
   | MatchAction':
     forall p f pi pre tms tms' post post' M,
-      match_pattern' p (Tm pi (pre |> tms <| post))
+      match_pattern p (Tm pi (pre |> tms <| post))
                  (Some (Tm pi (pre |> tms ++ tms' <| post'), M)) ->
       f tms' = true ->
-      match_pattern' (PatAction p f)
+      match_pattern (PatAction p f)
                      (Tm pi (pre |> tms <| post))
                (Some (Tm pi (pre |> tms ++ tms' <| post'), M))
   | NoMatchAction':
     forall p pi pre tms post f,
-      match_pattern' p (Tm pi (pre |> tms <| post)) None ->
-      match_pattern' (PatAction p f) (Tm pi (pre |> tms <| post)) None
+      match_pattern p (Tm pi (pre |> tms <| post)) None ->
+      match_pattern (PatAction p f) (Tm pi (pre |> tms <| post)) None
   | NoMatchActionFun':
     forall p pi pre tms tms' post post' M f,
-      match_pattern' p (Tm pi (pre |> tms <| post))
+      match_pattern p (Tm pi (pre |> tms <| post))
                  (Some (Tm pi (pre |> tms ++ tms' <| post'), M)) ->
       f tms' = false ->
-      match_pattern' (PatAction p f) (Tm pi (pre |> tms <| post)) None.
+      match_pattern (PatAction p f) (Tm pi (pre |> tms <| post)) None.
 
-(*
-  Inductive match_pattern' : nat -> pattern -> term -> term -> bindings -> Prop :=
-  | MatchCtx':
-    forall n p pi pre tm1 tm2 post M,
-      (* TODO: I would rather not have the Foralls here *)
-      Forall is_term pre ->
-      Forall is_term post ->
-      match_pattern' n p tm1 tm2 M ->
-      match_pattern' (S n) p
-                     (Tm pi (pre & tm1 ++ post))
-                     (Tm pi (pre & tm2 ++ post)) M
-  | MatchBind':
-    forall n p pi pre tms tms' post post' x M,
-      match_pattern' n p (Tm pi (pre |> tms <| post))
-                     (Tm pi (pre |> tms ++ tms' <| post')) M ->
-      match_pattern' (S n) (PatBind p x)
-                     (Tm pi (pre |> tms <| post))
-                     (Tm pi (pre |> tms ++ tms' <| post')) (M & x ~ tms')
-  | MatchStart':
-    forall pi post,
-      match_pattern' 0 PatStart
-                     (Tm pi (|> <| post))
-                     (Tm pi (|> <| post)) empty
-  | MatchEnd':
-    forall pi pre,
-      match_pattern' 0 PatEnd
-                     (Tm pi (pre |> <|))
-                     (Tm pi (pre |> <|)) empty
-  | MatchIn':
-      forall pi pre tms post,
-        match_pattern' 0 (PatIn pi)
-                       (Tm pi (pre |> tms <| post))
-                       (Tm pi (pre |> tms <| post)) empty
-  | MatchFB':
-      forall n p pi pre tms post tm M,
-        match_pattern' n p (Tm pi (pre |> tms <| post)) tm M ->
-        match_pattern' (S n) (PatFB p)
-                       (Tm pi (pre |> tms <| post))
-                       (Tm pi (pre |> tms <| post)) empty
-  | MatchNFB':
-      forall n p pi pre tms post,
-        nomatch_pattern' n p (Tm pi (pre |> tms <| post)) ->
-        match_pattern' (S n) (PatNFB p)
-                       (Tm pi (pre |> tms <| post))
-                       (Tm pi (pre |> tms <| post)) empty
-  | MatchLabel':
-      forall lbl pi pre tms tms' post,
-        match_pattern' 0 (PatLabel lbl)
-                       (Tm pi (pre |> tms <| Tm lbl tms' :: post))
-                       (Tm pi (pre |> tms & Tm lbl tms' <| post)) empty
-  | MatchAny':
-      forall pi pre tms post tm,
-        match_pattern' 0 (PatAny)
-                         (Tm pi (pre |> tms <| tm :: post))
-                         (Tm pi (pre |> tms & tm <| post)) empty
-(*
-  | MatchChoiceL:
-    forall p1 p2 pi pre tms post tm M,
-      match_pattern p1 (Tm pi (pre |> tms <| post)) tm M ->
-      match_pattern (PatChoice p1 p2) (Tm pi (pre |> tms <| post)) tm M
-  | MatchChoiceR:
-    forall p1 p2 pi pre tms post tm M,
-      nomatch_pattern p1 (Tm pi (pre |> tms <| post)) ->
-      match_pattern p2 (Tm pi (pre |> tms <| post)) tm M ->
-      match_pattern (PatChoice p1 p2) (Tm pi (pre |> tms <| post)) tm M
-  | MatchSeq:
-    forall p1 p2 pi pre tms post tm1 tm2 M1 M2,
-      match_pattern p1 (Tm pi (pre |> tms <| post)) tm1 M1 ->
-      match_pattern p2 tm1 tm2 M2 ->
-      match_pattern (PatSeq p1 p2) (Tm pi (pre |> tms <| post)) tm2 (M1 & M2)
-  | MatchChildren:
-    forall p1 p2 pi pre tms tms' post lbl tm M1 M2,
-      match_pattern p1 (Tm pi (pre |> tms <| Tm lbl tms' :: post))
-                       (Tm pi (pre |> tms & Tm lbl tms' <| post)) M1 ->
-      match_pattern p2 (Tm lbl (|> <| tms')) tm M2 ->
-      match_pattern (PatChildren p1 p2)
-                    (Tm pi (pre |> tms <| Tm lbl tms' :: post))
-                    (Tm pi (pre |> tms & Tm lbl tms' <| post)) (M1 & M2)
-  | MatchNot:
-    forall p pi pre tms post tm,
-      nomatch_pattern p (Tm pi (pre |> tms <| tm :: post)) ->
-      match_pattern (PatNeg p) (Tm pi (pre |> tms <| tm :: post))
-                               (Tm pi (pre |> tms & tm <| post)) empty
-  | MatchOptionYes:
-    forall p pi pre tms post tm M,
-      match_pattern p (Tm pi (pre |> tms <| post)) tm M ->
-      match_pattern (PatOption p) (Tm pi (pre |> tms <| post))
-                                  tm M
-  | MatchOptionNo:
-    forall p pi pre tms post,
-      nomatch_pattern p (Tm pi (pre |> tms <| post)) ->
-      match_pattern (PatOption p) (Tm pi (pre |> tms <| post))
-                                  (Tm pi (pre |> tms <| post)) empty
-  | MatchManyMore:
-    forall p pi pre tms tms' post post' tm M1 M2,
-      match_pattern p (Tm pi (pre |> tms <| post))
-                      (Tm pi (pre |> tms ++ tms' <| post')) M1 ->
-      tms' <> nil ->
-      match_pattern (PatMany p) (Tm pi (pre |> tms ++ tms' <| post')) tm M2 ->
-      match_pattern (PatMany p) (Tm pi (pre |> tms <| post)) tm (M1 & M2)
-  | MatchManyDone:
-    forall p pi pre tms post,
-      nomatch_pattern p (Tm pi (pre |> tms <| post)) ->
-      match_pattern (PatMany p) (Tm pi (pre |> tms <| post))
-                                (Tm pi (pre |> tms <| post)) empty
-  | MatchAction:
-    forall p f pi pre tms tms' post post' M,
-      match_pattern p (Tm pi (pre |> tms <| post))
-                      (Tm pi (pre |> tms ++ tms' <| post')) M ->
-      f tms' = true ->
-      match_pattern (PatAction p f) (Tm pi (pre |> tms <| post))
-                                    (Tm pi (pre |> tms ++ tms' <| post')) M
-*)
-  with
-    nomatch_pattern' : nat -> pattern -> term -> Prop :=
-    | NoMatchBind':
-      forall n p pi pre tms post x,
-        nomatch_pattern' n p (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern' (S n) (PatBind p x) (Tm pi (pre |> tms <| post))
-    | NoMatchStart':
-      forall pi pre tms post,
-        pre ++ tms <> nil ->
-        nomatch_pattern' 0 PatStart (Tm pi (pre |> tms <| post))
-    | NoMatchEnd':
-      forall pi pre tms post,
-        tms ++ post <> nil ->
-        nomatch_pattern' 0 PatEnd (Tm pi (pre |> tms <| post))
-    | NoMatchIn':
-      forall lbl pi pre tms post,
-        lbl <> pi ->
-        nomatch_pattern' 0 (PatIn lbl) (Tm pi (pre |> tms <| post))
-    | NoMatchFB':
-      forall n p pi pre tms post,
-        nomatch_pattern' n p (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern' (S n) (PatFB p) (Tm pi (pre |> tms <| post))
-    | NoMatchNFB':
-      forall n p pi pre tms post tm M,
-        match_pattern' n p (Tm pi (pre |> tms <| post)) tm M ->
-        nomatch_pattern' (S n) (PatNFB p) (Tm pi (pre |> tms <| post)).
-(*
-    | NoMatchLabel:
-      forall lbl lbl' pi pre tms tms' post,
-        lbl <> lbl' ->
-        nomatch_pattern (PatLabel lbl) (Tm pi (pre |> tms <| Tm lbl' tms' :: post))
-    | NoMatchAny:
-      forall pi pre tms,
-        nomatch_pattern (PatAny) (Tm pi (pre |> tms <|))
-    | NoMatchChoice:
-      forall p1 p2 pi pre tms post,
-        nomatch_pattern p1 (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern p2 (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern (PatChoice p1 p2) (Tm pi (pre |> tms <| post))
-    | NoMatchSeqL:
-      forall p1 p2 pi pre tms post,
-        nomatch_pattern p1 (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern (PatSeq p1 p2) (Tm pi (pre |> tms <| post))
-    | NoMatchSeqR:
-      forall p1 p2 pi pre tms post tm1 M1,
-        match_pattern p1 (Tm pi (pre |> tms <| post)) tm1 M1 ->
-        nomatch_pattern p2 tm1 ->
-        nomatch_pattern (PatSeq p1 p2) (Tm pi (pre |> tms <| post))
-    | NoMatchChildrenL:
-      forall p1 p2 pi pre tms post,
-        nomatch_pattern p1 (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern (PatChildren p1 p2) (Tm pi (pre |> tms <| post))
-    | NoMatchChildrenL2:
-      forall p1 p2 pi pre tms tms' post post' M,
-        match_pattern p1 (Tm pi (pre |> tms <| post))
-                         (Tm pi (pre |> tms ++ tms' <| post')) M ->
-        length tms' <> 1 ->
-        nomatch_pattern (PatChildren p1 p2) (Tm pi (pre |> tms <| post))
-    | NoMatchChildrenR:
-      forall p1 p2 pi pre tms tms' post lbl M,
-        match_pattern p1 (Tm pi (pre |> tms <| Tm lbl tms' :: post))
-                         (Tm pi (pre |> tms & Tm lbl tms' <| post)) M ->
-        nomatch_pattern p2 (Tm lbl (|> <| tms')) ->
-        nomatch_pattern (PatChildren p1 p2) (Tm pi (pre |> tms <| Tm lbl tms' :: post))
-    | NoMatchNot:
-      forall p pi pre tms post tm M,
-        match_pattern p (Tm pi (pre |> tms <| tm :: post))
-                        (Tm pi (pre |> tms & tm <| post)) M ->
-        nomatch_pattern (PatNeg p) (Tm pi (pre |> tms <| tm :: post))
-    | NoMatchAction:
-      forall p pi pre tms post f,
-        nomatch_pattern p (Tm pi (pre |> tms <| post)) ->
-        nomatch_pattern (PatAction p f) (Tm pi (pre |> tms <| post))
-    | NoMatchActionFun:
-      forall p pi pre tms tms' post post' M f,
-        match_pattern p (Tm pi (pre |> tms <| post))
-                        (Tm pi (pre |> tms ++ tms' <| post')) M ->
-        f tms' = false ->
-        nomatch_pattern (PatAction p f) (Tm pi (pre |> tms <| post)).
-*)
-*)
   Lemma select_is_term_absurd:
     forall pre pre' tms post post' tm,
       Forall is_term pre ->
@@ -1480,39 +1070,41 @@ Section Trieste.
 
   Lemma match_pattern_preserves_term_size:
     forall p tm tm' M,
-      match_pattern p tm tm' M ->
+      match_pattern p tm (Some (tm', M)) ->
       term_size tm = term_size tm'.
   Proof using.
     introv Hmatch.
-    induction* Hmatch.
-    - repeat rewrites term_size_app. simpls*.
+    remember (Some (tm', M)) as res.
+    gen tm' M. induction Hmatch; intros; inverts* Heqres.
+    - forwards* IH: IHHmatch. repeat rewrites term_size_app. simpls*.
     - repeat rewrites term_size_app. fequal.
       simpls. fequals.
       repeat rewrites terms_size_app. simpls. nat_math.
     - repeat rewrites term_size_app. fequal.
       simpls. fequals.
       repeat rewrites terms_size_app. simpls. nat_math.
-    - nat_math.
+    - forwards* IH1: IHHmatch1. forwards* IH2: IHHmatch2. nat_math.
     - repeat rewrites term_size_app. fequal.
       simpls. fequals.
       repeat rewrites terms_size_app. simpls. nat_math.
-    - nat_math.
+    - forwards* IH1: IHHmatch1. forwards* IH2: IHHmatch2. nat_math.
   Qed.
 
-  (* TODO: Can we show that we always move the maximal number of
-  terms? Could this imply determinism? *)
   Lemma match_pattern_moves_terms:
     forall p pi pre tms post tm' M,
       Forall is_term pre ->
       Forall is_term tms ->
       Forall is_term post ->
-      match_pattern p (Tm pi (pre |> tms <| post)) tm' M ->
+      match_pattern p (Tm pi (pre |> tms <| post)) (Some (tm', M)) ->
       exists tms' post',
         tm' = Tm pi (pre |> tms ++ tms' <| post') /\ post = tms' ++ post'.
   Proof using.
-    introv Hall1 Hall2 Hall3 Hmatch. remember (Tm pi (pre |> tms <| post)) as tm.
-    gen pre tms post. induction* Hmatch; intros; inverts Heqtm.
+    introv Hall1 Hall2 Hall3 Hmatch.
+    remember (Tm pi (pre |> tms <| post)) as tm.
+    remember (Some (tm', M)) as res.
+    gen pre tms post tm' M. induction* Hmatch; intros; inverts Heqtm; inverts* Heqres.
     - false* select_is_term_absurd H3. (* TODO: Should match goal *)
+    - forwards* (-> & -> & ->): select_eq_inv H1.
     - forwards* (-> & -> & ->): select_eq_inv H1.
       eexists nil. exists post. rew_list*.
     - forwards* (-> & -> & ->): select_eq_inv H1.
@@ -1521,18 +1113,19 @@ Section Trieste.
       eexists nil. exists post. rew_list*.
     - forwards* (-> & -> & ->): select_eq_inv H1.
       eexists nil. exists post. rew_list*.
-    - forwards* (-> & -> & ->): select_eq_inv H2.
+    - forwards* (-> & -> & Heq): select_eq_inv H1.
       eexists nil. exists post. rew_list*.
     - forwards* (-> & -> & Heq): select_eq_inv H1.
-    - forwards* (-> & -> & Heq): select_eq_inv H1.
     - forwards* (-> & -> & ->): select_eq_inv H1.
-      forwards* (tms' & post' & -> & ->): IHHmatch1 pre tms post.
+    - forwards* (-> & -> & ->): select_eq_inv H1.
+      forwards* (tms' & post' & -> & ->): IHHmatch1 pre tms post tm1 M1.
       forwards~ (Hall31 & Hall32): Forall_app_inv Hall3.
       forwards* (tms'' & post'' & -> & ->): IHHmatch2 pre (tms ++ tms') post'.
       { applys* Forall_app. }
       exists (tms' ++ tms'') post''. rew_list*.
-    - forwards* (-> & -> & ->): select_eq_inv H2.
-    - forwards* (-> & -> & ->): select_eq_inv H2.
+    - forwards* (-> & -> & ->): select_eq_inv H1.
+    - forwards* (-> & -> & ->): select_eq_inv H1.
+    - forwards* (-> & -> & ->): select_eq_inv H1.
       eexists nil. exists post. rew_list*.
     - forwards* (-> & -> & ->): select_eq_inv H2.
       forwards* (tms'' & post'' & Heq & ->): IHHmatch1 pre tms post.
@@ -1544,18 +1137,19 @@ Section Trieste.
       forwards* (tms'' & post'' & -> & ->): IHHmatch2 pre (tms ++ tms') post'.
       { applys* Forall_app. }
       exists (tms' ++ tms'') post''. rew_list*.
-    - forwards* (-> & -> & ->): select_eq_inv H2.
+    - forwards* (-> & -> & ->): select_eq_inv H1.
       eexists nil. exists post. rew_list*.
   Qed.
 
   Lemma match_pattern_preserves_matching_term:
-    forall tm tm' p M,
+    forall tm p tm' M,
       is_matching_term tm ->
-      match_pattern p tm tm' M ->
+      match_pattern p tm (Some (tm', M)) ->
       is_matching_term tm'.
   Proof using.
     intros tm. induction_wf IH: term_size tm. unfolds measure.
-    introv Hmtm Hmatch. gen tm tm'. inductions p; intros.
+    introv Hmtm Hmatch. remember (Some (tm', M)) as res.
+    gen tm res tm' M. inductions p; intros; subst; simpls.
     - inverts~ Hmatch. forwards~ Hmtm': is_matching_term_ctx_inv Hmtm.
       forwards*: IH Hmtm'.
     - inverts~ Hmatch. forwards~ Hmtm': is_matching_term_ctx_inv Hmtm.
@@ -1587,7 +1181,7 @@ Section Trieste.
     - inverts~ Hmatch.
       + forwards~ Hmtm': is_matching_term_ctx_inv Hmtm.
         forwards*: IH Hmtm'.
-      + forwards~ Hmtm1: IHp1 H1. forwards~: IHp2 H5.
+      + forwards~ Hmtm1: IHp1 H3. forwards~: IHp2 H5.
         introv Hlt Hmtm' Hmatch. applys* IH.
         asserts Heq: (term_size (Tm pi (pre |> tms <| post)) = term_size tm1).
         { apply* match_pattern_preserves_term_size. }
@@ -1595,7 +1189,7 @@ Section Trieste.
     - inverts~ Hmatch.
       + forwards~ Hmtm': is_matching_term_ctx_inv Hmtm.
         forwards*: IH Hmtm'.
-      + forwards~ Hmtm1: IHp1 H1.
+      + forwards~ Hmtm1: IHp1 H3.
     - inverts~ Hmatch.
       + forwards~ Hmtm': is_matching_term_ctx_inv Hmtm.
         forwards*: IH Hmtm'.
@@ -1609,10 +1203,10 @@ Section Trieste.
     - inverts~ Hmatch.
       + forwards~ Hmtm': is_matching_term_ctx_inv Hmtm.
         forwards*: IH Hmtm'.
-      + forwards~ Hmtm': IHp H0.
+      + forwards~ Hmtm': IHp H2.
         forwards~ (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm'.
         forwards~ (Hall21 & Hall22): Forall_app_inv Hall2.
-        forwards~ (tms'' & post'' & -> & ->): match_pattern_moves_terms H2.
+        forwards~ (tms'' & post'' & -> & ->): match_pattern_moves_terms H5.
         forwards~ (Hall31 & Hall32): Forall_app_inv Hall3.
         constructors*.
         applys* Forall_app.
@@ -1626,191 +1220,432 @@ Section Trieste.
       + forwards* (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
   Qed.
 
-  (* TODO: Create a version of match_pattern with an explicit
-  height n of derivation and do induction over n1 + n2? *)
-(*
-  Lemma match_pattern_deterministic':
-    forall n m p tm tm1 tm2 M1 M2,
+  Lemma ctx_eq_inv:
+    forall pre pre' tm tm' post post',
+      Forall is_term pre ->
+      Forall is_term pre' ->
+      Forall is_term post ->
+      Forall is_term post' ->
       is_matching_term tm ->
-      match_pattern' n p tm tm1 M1 ->
-      match_pattern' m p tm tm2 M2 ->
-      tm1 = tm2 /\ M1 = M2.
+      pre & tm ++ post = pre' & tm' ++ post' ->
+      pre = pre' /\ tm = tm' /\ post = post'.
   Proof using.
-    intros n m.
-    remember (n + m)%nat as sum.
-    gen n m. induction_wf IH: ????? sum. unfolds measure.
-    (* TODO: Still only know how to do one at a time... *)
-    introv Hmtm Hmatch1 Hmatch2.
-*)
-  Lemma match_pattern_deterministic:
-    forall p tm tm1 tm2 M1 M2,
-      is_matching_term tm ->
-      match_pattern p tm tm1 M1 ->
-      match_pattern p tm tm2 M2 ->
-      tm1 = tm2 /\ M1 = M2.
-  Proof using.
-    introv Hmtm Hmatch1 Hmatch2.
-    gen tm2 M2.
-    induction Hmatch1; intros; inverts Hmatch2;
-      try match goal with
-      | H : (_ |> _ <| _) = _ & _ ++ _ |- _ =>
-          symmetry in H; false* select_is_term_absurd H
-      | H : _ & _ ++ _ = (_ |> _ <| _) |- _ =>
-          false* select_is_term_absurd H
-      end.
-(*
-    - forwards~ Hmtm': is_matching_term_ctx_inv Hmtm.
-      (* ctx_inv lemma *) admit.
-    - forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-      forwards* (-> & -> & ->): select_eq_inv H3.
-      forwards* (Heq & -> & Hnmatch): IHHmatch1.
-      inverts Heq.
-      forwards* Hmtm': match_pattern_preserves_matching_term.
-      forwards (Hall1' & Hall2' & Hall3'): is_matching_term_select_inv Hmtm'.
-      forwards* (_ & Heq' & ->): select_eq_inv H0.
-      forwards~ ->: app_cancel_l Heq'.
-      splits*. intros contra. inverts contra.
-      forwards* (-> & -> & ->): select_eq_inv H6.
-    - rew_list in *. subst*. admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - admit.
-    - forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-      forwards* (-> & -> & ->): select_eq_inv H2.
-      forwards* (-> & -> & Hnmatch): IHHmatch1.
-      splits*. intros contra. inverts contra.
-    - forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-      forwards* (-> & -> & ->): select_eq_inv H2.
-      forwards* (Heq & -> & Hnmatch): IHHmatch1.
-    - forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-      forwards* (-> & -> & ->): select_eq_inv H3.
-      admit. (* TODO: No induction hypothesis talking about second match :( *)
-    - splits*. intros contra. inverts contra.
-    - forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-      forwards* (-> & -> & ->): select_eq_inv H2.
-      admit.
-    - admit.
-    - admit.
-    - admit.
-    -
-*)
-  Admitted.
+    introv Hall1 Hall1' Hall2 Hall2' Hmtm Heq.
+    inductions pre; intros; destruct pre'; rew_list in *.
+    - inverts* Heq.
+    - inverts* Heq.
+      inverts Hall1' as contra Hall1'.
+      false* is_term_not_is_matching.
+    - inverts* Heq.
+      forwards* (Hall2'1 & Hall2'2): Forall_app_inv.
+      inverts Hall2'2 as contra Hall2'2.
+      false* is_term_not_is_matching.
+    - inverts Heq.
+      inverts Hall1 as Htm Hall1.
+      inverts Hall1' as Htm' Hall1'.
+      forwards* (-> & -> & ->): IHpre pre' tm tm' post post'; rew_list*.
+  Qed.
 
+  Lemma match_pattern_deterministic:
+    forall tm p res1 res2,
+      is_matching_term tm ->
+      match_pattern p tm res1 ->
+      match_pattern p tm res2 ->
+      res1 = res2.
+  Proof using.
+    intros tm. induction_wf IH: term_size tm. unfolds measure.
+    introv Hmtm Hmatch1 Hmatch2.
+    gen res2. inductions Hmatch1; intros.
+    - forwards~ Hmtm': is_matching_term_ctx_inv Hmtm.
+      inverts Hmatch2;
+        try match goal with
+          | H : (_ |> _ <| _) = _ & _ ++ _ |- _ =>
+              symmetry in H; false* select_is_term_absurd H
+          | H : _ & _ ++ _ = (_ |> _ <| _) |- _ =>
+              false* select_is_term_absurd H
+          end.
+      + symmetry in H2. forwards* (-> & -> & ->): ctx_eq_inv H2.
+        forwards* Heq: IH Hmatch1. inverts* Heq.
+      + symmetry in H2. forwards* (-> & -> & ->): ctx_eq_inv H2.
+        forwards* Heq: IH Hmatch1. inverts* Heq.
+    - forwards~ Hmtm': is_matching_term_ctx_inv Hmtm.
+      inverts Hmatch2;
+        try match goal with
+          | H : (_ |> _ <| _) = _ & _ ++ _ |- _ =>
+              symmetry in H; false* select_is_term_absurd H
+          | H : _ & _ ++ _ = (_ |> _ <| _) |- _ =>
+              false* select_is_term_absurd H
+          end.
+      + symmetry in H2. forwards* (-> & -> & ->): ctx_eq_inv H2.
+        forwards* Heq: IH Hmatch1. inverts* Heq.
+      + symmetry in H2. forwards* (-> & -> & ->): ctx_eq_inv H2.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1. inverts Heq.
+        forwards* Hmtm': match_pattern_preserves_matching_term H4.
+        forwards (Hall1' & Hall2' & Hall3'): is_matching_term_select_inv Hmtm'.
+        forwards* (_ & Heq & _): select_eq_inv H0.
+        apply app_cancel_l in Heq. subst*.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1. inverts Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1. inverts Heq.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + vm_compute in H1. subst*.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H0.
+        destruct* tms.
+        forwards* (Heq & Heq' & _): select_eq_inv H0. inverts Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + vm_compute in H1. subst*.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H0.
+        destruct* post.
+        forwards* (_ & Heq & Heq'): select_eq_inv H0. inverts Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H3.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+        forwards* Heq: IHHmatch1. inverts Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+        forwards* Heq: IHHmatch1. inverts Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+        forwards* Heq: IHHmatch1. inverts Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+        forwards* Heq: IHHmatch1. inverts Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & Heq): select_eq_inv H2. inverts* Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & Heq): select_eq_inv H2. inverts* Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & Heq): select_eq_inv H3. inverts* Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        inverts Hall3 as Htm Hall3.
+        forwards* (-> & -> & Heq): select_eq_inv H1. inverts* Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        inverts Hall3 as Htm Hall3.
+        forwards* (-> & -> & Heq): select_eq_inv H1. inverts* Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & Heq): select_eq_inv H1. inverts* Heq.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1. inverts Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+        forwards~ Hmtm': match_pattern_preserves_matching_term H4.
+        forwards* Heq: IHHmatch1_2.
+        {
+          introv Hlt Hmtm'' Hmatch'1 Hmatch2'.
+          forwards~: match_pattern_preserves_term_size H4.
+          applys* IH. nat_math.
+        }
+        inverts* Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+        forwards~ Hmtm': match_pattern_preserves_matching_term H4.
+        forwards* Heq: IHHmatch1_2.
+        {
+          introv Hlt Hmtm'' Hmatch'1 Hmatch2'.
+          forwards*: match_pattern_preserves_term_size H4.
+          applys* IH. nat_math.
+        }
+        inverts* Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1. inverts Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+        forwards~ Hmtm': match_pattern_preserves_matching_term H4.
+        forwards* Heq: IHHmatch1_2.
+        {
+          introv Hlt Hmtm'' Hmatch'1 Hmatch2'.
+          forwards*: match_pattern_preserves_term_size H4.
+          applys* IH. nat_math.
+        }
+        inverts* Heq.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & Heq): select_eq_inv H3. inverts Heq.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+        forwards~ Hmtm': match_pattern_preserves_matching_term H4.
+        forwards (Hall1' & Hall2' & Hall3'): is_matching_term_select_inv Hmtm'.
+        forwards* (Hall21 & Htm): Forall_last_inv.
+        inverts Htm.
+        forwards* Heq: IHHmatch1_2.
+        {
+          introv Hlt Hmtm'' Hmatch'1 Hmatch2'.
+          forwards~: match_pattern_preserves_term_size H4.
+          applys* IH. simpls. folds terms_size.
+          rewrite terms_size_app. rewrite terms_size_app in Hlt. simpls.
+          rewrite terms_size_app. rewrite terms_size_app in Hlt. simpls.
+          folds terms_size. nat_math.
+        }
+        inverts* Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & <-): select_eq_inv H3.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & <-): select_eq_inv H3.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+        forwards~ Hmtm': match_pattern_preserves_matching_term H4.
+        forwards (Hall1' & Hall2' & Hall3'): is_matching_term_select_inv Hmtm'.
+        forwards* (Hall2'1 & Hall2'2): Forall_app_inv.
+        forwards* (_ & Heq & <-): select_eq_inv H0.
+        apply app_cancel_l in Heq. subst.
+        forwards* Heq: IHHmatch1_2.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        inverts Hall3 as Htm Hall.
+        inverts Htm.
+        forwards* (-> & -> & Heq): select_eq_inv H3. inverts Heq.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+        forwards~ Hmtm': match_pattern_preserves_matching_term H4.
+        forwards (Hall1' & Hall2' & Hall3'): is_matching_term_select_inv Hmtm'.
+        forwards* (Hall2'1 & Hall2'2): Forall_app_inv.
+        inverts Hall2'2 as Htm' _. inverts Htm'.
+        forwards* Heq: IHHmatch1_2.
+        {
+          introv Hlt Hmtm'' Hmatch'1 Hmatch2'.
+          forwards~: match_pattern_preserves_term_size H4.
+          applys* IH. simpls. folds terms_size.
+          rewrite terms_size_app. rewrite terms_size_app in Hlt. simpls.
+          rewrite terms_size_app. rewrite terms_size_app in Hlt. simpls.
+          folds terms_size. nat_math.
+        }
+        inverts Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1. inverts Heq.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & ->): select_eq_inv H4.
+        forwards* Heq: IHHmatch1. inverts Heq.
+        inverts Hall3 as Htm Hall3.
+        inverts Htm.
+        forwards* (_ & Heq & <-): select_eq_inv H1.
+        apply app_cancel_l in Heq. subst.
+        forwards* Heq: IHHmatch1.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards~ (-> & -> & Heq): select_eq_inv H3. inverts Heq.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+        inverts Hall3 as Htm Hall3.
+        inverts Htm.
+        forwards* Heq: IHHmatch1_2.
+        {
+          introv Hlt Hmtm'' Hmatch'1 Hmatch2'.
+          forwards~: match_pattern_preserves_term_size H4.
+          applys* IH. simpls. folds terms_size.
+          rewrite terms_size_app. rewrite terms_size_app in Hlt. simpls.
+          rewrite terms_size_app. rewrite terms_size_app in Hlt. simpls.
+          folds terms_size. nat_math.
+        }
+        inverts Heq.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & Heq): select_eq_inv H2. inverts* Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & Heq): select_eq_inv H2. inverts Heq.
+        forwards* Heq: IHHmatch1. inverts Heq.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & Heq): select_eq_inv H2. inverts Heq.
+        forwards* Heq: IHHmatch1. inverts Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & Heq): select_eq_inv H2.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & Heq): select_eq_inv H2. inverts Heq.
+        forwards* Heq: IHHmatch1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+        forwards* Heq: IHHmatch1. inverts Heq.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H0.
+      + false* select_is_term_absurd H0.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & Heq): select_eq_inv H2. inverts Heq.
+        forwards* Heq: IHHmatch1. inverts Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H1.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+        forwards~ Hmtm': match_pattern_preserves_matching_term H3.
+        forwards (Hall1' & Hall2' & Hall3'): is_matching_term_select_inv Hmtm'.
+        forwards* (Hall2'1 & Hall2'2): Forall_app_inv.
+        forwards* (_ & Heq & ->): select_eq_inv H1.
+        apply app_cancel_l in Heq. subst.
+        forwards* Heq: IHHmatch1_2.
+        {
+          introv Hlt Hmtm'' Hmatch'1 Hmatch2'.
+          folds terms_size.
+          forwards~ Heq: match_pattern_preserves_term_size H3.
+          apply* IH. simpls. folds terms_size. inverts Heq.
+          rewrite H5. nat_math.
+        }
+        inverts* Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H3.
+        forwards* Heq: IHHmatch1_1. inverts Heq.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H1.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H1.
+        forwards* Heq: IHHmatch1. inverts Heq.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H2.
+    - inverts Hmatch2.
+      + false* select_is_term_absurd H1.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H4.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H4.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H4.
+        forwards~ Hmtm': match_pattern_preserves_matching_term H5.
+        forwards (Hall1' & Hall2' & Hall3'): is_matching_term_select_inv Hmtm'.
+        forwards* (Hall2'1 & Hall2'2): Forall_app_inv.
+        forwards* Heq: IHHmatch1. inverts Heq as Heq.
+        forwards* (_ & Heq' & ->): select_eq_inv Heq.
+        apply app_cancel_l in Heq'. subst.
+        false*.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H3.
+    - inverts~ Hmatch2.
+      + false* select_is_term_absurd H1.
+      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
+        forwards* (-> & -> & ->): select_eq_inv H4.
+        forwards~ Hmtm': match_pattern_preserves_matching_term H5.
+        forwards (Hall1' & Hall2' & Hall3'): is_matching_term_select_inv Hmtm'.
+        forwards* (Hall2'1 & Hall2'2): Forall_app_inv.
+        forwards* Heq: IHHmatch1. inverts Heq as Heq.
+        forwards* (_ & Heq' & ->): select_eq_inv Heq.
+        apply app_cancel_l in Heq'. subst.
+        false*.
+  Qed.
+
+  (* TODO: Can we prove completeness? It seems to be needed for
+  making the below an equivalence *)
   Lemma nomatch_is_negation:
     forall p tm tm' M,
       is_matching_term tm ->
-      nomatch_pattern p tm ->
-      ~match_pattern p tm tm' M.
+      match_pattern p tm None ->
+      ~match_pattern p tm (Some (tm', M)).
   Proof using.
-    introv Hmtm Hnmatch contra. inductions p.
-    - inverts Hnmatch. inverts contra.
-      + false* select_is_term_absurd H1.
-      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-        forwards* (-> & -> & ->): select_eq_inv H3.
-    - inverts Hnmatch. inverts contra.
-      + false* select_is_term_absurd H1.
-      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-        forwards* (-> & -> & ->): select_eq_inv H3.
-    - inverts Hnmatch. inverts contra.
-      + false* select_is_term_absurd H1.
-      + forwards* (-> & -> & ->): select_eq_inv H3.
-    - inverts Hnmatch. inverts contra.
-      + false* select_is_term_absurd H1.
-      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-        forwards* (-> & -> & ->): select_eq_inv H2.
-    - inverts Hnmatch. inverts contra.
-      + false* select_is_term_absurd H1.
-      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-        forwards* (-> & -> & ->): select_eq_inv H2.
-    - inverts Hnmatch. inverts contra.
-      + false* select_is_term_absurd H1.
-      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-        forwards* (-> & -> & Heq): select_eq_inv H3.
-        inverts* Heq.
-    - inverts Hnmatch. inverts contra.
-      + false* select_is_term_absurd H0.
-      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-        forwards* (-> & -> & Heq): select_eq_inv H1.
-        inverts Heq.
-    - inverts Hnmatch. inverts contra.
-      + false* select_is_term_absurd H0.
-      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-        forwards* (-> & -> & ->): select_eq_inv H5.
-      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-        forwards* (-> & -> & ->): select_eq_inv H5.
-    - inverts Hnmatch.
-      + inverts contra.
-        * false* select_is_term_absurd H1.
-        * forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-          forwards* (-> & -> & ->): select_eq_inv H4.
-      + inverts contra.
-        * false* select_is_term_absurd H0.
-        * forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-          forwards~ (-> & -> & ->): select_eq_inv H5.
-          forwards (-> & Heq): match_pattern_deterministic H1 H7; eauto.
-          forwards*: IHp2 H3.
-          applys* match_pattern_preserves_matching_term.
-    - inverts Hnmatch.
-      + inverts contra.
-        * false* select_is_term_absurd H1.
-        * forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-          forwards* (-> & -> & ->): select_eq_inv H4.
-      + inverts contra.
-        * false* select_is_term_absurd H0.
-        * forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-          forwards~ (-> & -> & ->): select_eq_inv H5.
-          forwards (Heq & ->): match_pattern_deterministic H1 H7; eauto.
-          inverts Heq. inverts Hall3.
-          forwards~ (_ & Heq & _): select_eq_inv H0. applys~ Forall_last.
-          apply app_cancel_l in Heq. subst*.
-      + inverts contra.
-        * false* select_is_term_absurd H0.
-        * forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-          forwards~ (-> & -> & Heq): select_eq_inv H5.
-          inverts Heq. applys IHp2 H3 H8.
-          inverts Hmtm.
-          -- false* select_is_term_absurd H0.
-          -- forwards* (-> & -> & Heq): select_eq_inv H0.
-             subst. inverts H6. inverts H10. constructors*.
-    - inverts Hnmatch. inverts contra.
-      + false* select_is_term_absurd H1.
-      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-        forwards~ (-> & -> & Heq): select_eq_inv H3.
-        inverts *Heq.
-    - inverts Hnmatch.
-    - inverts Hnmatch.
-    - inverts Hnmatch. inverts contra.
-      + false* select_is_term_absurd H0.
-      + forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-        forwards* (-> & -> & ->): select_eq_inv H4.
-    - inverts Hnmatch.
-      + inverts contra.
-        * false* select_is_term_absurd H1.
-        * forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-          forwards* (-> & -> & ->): select_eq_inv H4.
-      + inverts contra.
-        * false* select_is_term_absurd H0.
-        * forwards (Hall1 & Hall2 & Hall3): is_matching_term_select_inv Hmtm.
-          forwards~ (-> & -> & ->): select_eq_inv H5.
-          forwards (Heq & ->): match_pattern_deterministic H1 H7; eauto.
-          inverts Heq.
-          forwards~ Hmtm': match_pattern_preserves_matching_term H1.
-          forwards (Hall1' & Hall2' & Hall3'): is_matching_term_select_inv Hmtm'.
-          forwards~ (Hall21 & Hall22): Forall_app_inv Hall2'.
-          forwards~ Hmtm'': match_pattern_preserves_matching_term H7.
-          forwards (Hall1'' & Hall2'' & Hall3''): is_matching_term_select_inv Hmtm''.
-          forwards~ (Hall21' & Hall22'): Forall_app_inv Hall2''.
-          forwards~ (_ & Heq' & ->): select_eq_inv H0.
-          apply app_cancel_l in Heq'. subst. rewrite H3 in H8. inverts H8.
+    introv Hmtm Hnmatch contra.
+    forwards* absurd: match_pattern_deterministic Hnmatch contra.
+    inverts absurd.
   Qed.
+
+  (* TODO: Something makes automation slow... *)
+
+  (* NO MORE FUN UNTIL OOPSLA PAPER IS DONE! *)
+
 End Trieste.
