@@ -1,5 +1,6 @@
 #include <trieste/driver.h>
 
+#include "wf.hh"
 #include "lang.hh"
 
 /*
@@ -11,7 +12,7 @@ namespace list
 {
   Parse parser()
   {
-    Parse p(depth::file);
+    Parse p(depth::file, wf_parser);
     auto indent = std::make_shared<std::vector<size_t>>();
 
     p("start",

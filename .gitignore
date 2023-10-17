@@ -40,3 +40,11 @@ list/build/
 
 # Mac stuff
 */.DS_Store
+
+# Tex stuff
+semantics/*.pdf
+semantics/*.aux
+semantics/*.fdb_latexmk
+semantics/*.log 
+semantics/*.fls
+semantics/*.synctex.gz

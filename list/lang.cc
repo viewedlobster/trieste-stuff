@@ -6,15 +6,20 @@ namespace list
   PassDef cleanup()
   {
     return {
-      In(Top) * (T(File) << T(Group)[Group]) >>
-      [](Match& _) { return Group << *_[Group]; },
-
-      In(File) * (T(List) << T(ListContents)[ListContents]) >>
-      [](Match& _) { return List << *_[ListContents]; },
-
-      In(Group) * (T(List) << T(ListContents)[ListContents]) >>
-      [](Match& _) { return List << *_[ListContents]; }
-
+      "cleanup",
+      wf_pass_cleanup,
+      dir::topdown,
+      {
+        In(Top) * (T(File) << T(Group)[Group]) >>
+        [](Match& _) { return Group << *_[Group]; },
+  
+        In(File) * (T(List) << T(ListContents)[ListContents]) >>
+        [](Match& _) { return List << *_[ListContents]; },
+  
+        In(Group) * (T(List) << T(ListContents)[ListContents]) >>
+        [](Match& _) { return List << *_[ListContents]; }
+  
+      }
     };
   }
 
@@ -22,10 +27,12 @@ namespace list
   {
     static Driver d(
       "list",
+      nullptr,
       parser(),
-      wf_parser(),
-      {{"cleanup", cleanup(), wf_pass_cleanup()}});
-
+      {
+        cleanup()
+      }
+    );
     return d;
   }
 }

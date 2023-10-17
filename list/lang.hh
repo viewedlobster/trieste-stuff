@@ -6,11 +6,11 @@ namespace list
 {
   using namespace trieste;
 
-  inline constexpr auto List = TokenDef("list");
-  inline constexpr auto ListContents = TokenDef("contents");
+  inline const auto List = TokenDef("list");
+  inline const auto ListContents = TokenDef("contents");
 
-  inline constexpr auto Integer = TokenDef("int", flag::print);
-  inline constexpr auto String = TokenDef("string", flag::print);
+  inline const auto Integer = TokenDef("int", flag::print);
+  inline const auto String = TokenDef("string", flag::print);
 
   Parse parser();
   Driver& driver();
