@@ -15,6 +15,7 @@
 \newcommand{\labelFont}{\texttt}
 \newcommand{\cursorColor}{LimeGreen}
 
+\newcommand{\tok}{\ensuremath{\mathit{token}}} %% should replace lbl in the future 
 \newcommand{\lbl}{\ensuremath{\mathit{lbl}}}
 \newcommand{\lbls}{\ensuremath{\mathit{lbls}}}
 \newcommand{\Top}{\ensuremath{\labelFont{Top}}}
@@ -92,6 +93,10 @@
 \newcommand{\pin}[1]{\ensuremath{\mathit{In}(#1)}}
 \newcommand{\pstart}{\ensuremath{\mathit{Start}}}
 \newcommand{\pend}{\ensuremath{\mathit{End}}}
+
+%% Effects
+\newcommand{\getchildren}[1]{\ensuremath{^*#1}}
+\newcommand{\lift}[2]{\ensuremath{#1} \Uparrow #2}
 
 \newcommand{\arrayheading}[2]{\multicolumn{#1}{l}{\mbox{#2}}}
 
@@ -1271,6 +1276,40 @@ We will need:
 \item A relation that tries a selection of patterns with
   associated symbolic terms and then \RED{advances the cursor}.
 \end{itemize}
+
+\subsection{Effects}
+
+If we describe a rewrite rule as a function $R : P \to E$ where $P$ is a pattern (term) and $E$ is an effect (term), we can define the following grammar for effects:
+
+\[
+  \begin{array}{crll}
+    \arrayheading{4}{Effects}\\
+      e,f & ::= & x             & \text{a term bound by variable x}   \\
+        & ~|~ & \getchildren{x} & \text{get the children of a term bound by x } \\
+        & ~|~ & \tok            & \text{any token} \\
+        & ~|~ & \children{e}{f} & \text{f is the child of e}  \\
+        & ~|~ & \pseq{e}{f}     & \text{a sequence of nodes e and f}   \\
+        & ~|~ & \lift{e}{f}     & \text{add node f as a child to the first matching node e starting from the parent} \\
+  \end{array}
+\]
+
+We need some more context here? the tree itself? to express retrieval of the children of a node and the lift effect?
+
+The meaning of x:
+
+\[
+  \begin{array}{c}
+    \irule{effect-variable}{
+    \{x \mapsto \tms\} \in \bindings
+    }{
+    \bindings \vdash x \Rightarrow \tms.  
+    }
+    \quad
+  \end{array}
+\]
+
+We can then specify a pass as a ordered set of rewrite rules together with a well-formedness definition.
+
 
 \section{Pass Specifications}
 
