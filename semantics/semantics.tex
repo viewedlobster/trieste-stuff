@@ -1287,13 +1287,11 @@ If we describe a rewrite rule as a function $R : P \to E$ where $P$ is a pattern
       e,f & ::= & x             & \text{a term bound by variable x}   \\
         & ~|~ & \getchildren{x} & \text{get the children of a term bound by x } \\
         & ~|~ & \tok            & \text{any token} \\
-        & ~|~ & \children{e}{f} & \text{f is the child of e}  \\
-        & ~|~ & \pseq{e}{f}     & \text{a sequence of nodes e and f}   \\
-        & ~|~ & \lift{e}{f}     & \text{add node f as a child to the first matching node e starting from the parent} \\
+        & ~|~ & \children{e}{f} & \text{f is a child of e}  \\
+        & ~|~ & \pseq{e}{f}     & \text{a sequence of terms e and f}   \\
+        & ~|~ & \lift{\tok}{f}  & \text{add term f as a child to the first matching \tok higher up the tree} \\
   \end{array}
 \]
-
-We need some more context here? the tree itself? to express retrieval of the children of a node and the lift effect?
 
 The meaning of x:
 
@@ -1310,6 +1308,7 @@ The meaning of x:
 
 We can then specify a pass as a ordered set of rewrite rules together with a well-formedness definition.
 
+%Do we need some more context here? the tree itself? to express retrieval of the children of a node and the lift effect?
 
 \section{Pass Specifications}
 
