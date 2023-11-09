@@ -2,6 +2,7 @@
 
 \usepackage{amsmath, amssymb}
 \usepackage[usenames,dvipsnames]{xcolor}
+\usepackage[cache=false]{minted}
 
 \newcommand{\RED}[1]{\textcolor{red}{#1}}
 \newcommand{\TODO}[1]{\RED{[TODO: #1]}}
@@ -1313,6 +1314,35 @@ We can then specify a pass as a ordered set of rewrite rules together with a wel
 \section{Pass Specifications}
 
 Well-formedness rules
+
+\subsection{Well-formedness definition and variable bindings}
+Defining a rewrite pass in Trieste requires a definition of well-formedness of the shape of a tree after that particular pass. It serves both as a property to check that the rewrite rules do what they are intended to and as a concise way of expressing the intermediate representation (IR) of the language we are rewriting. The language we are working with is not specified in any other way (except in the rules themselves, but they are not very convenient to read), so the well-formed definition for the different passes gives us the specification of every IR of the language. 
+
+Consider the following very simple well-formedness definition:
+
+\begin{minted}{c++}
+    wf_def = A <<= B1 * B2
+\end{minted}
+
+It would read as ``a node \mintinline{c++}{A} should have two children \mintinline{c++}{B1} and \mintinline{c++}{B2}'' when interpreted as a property of well-formedness. Desugaring the example above gives something like:
+
+\begin{minted}{c++}
+    wf_def = A <<= (B1 >>= B1) * (B2 >>= B2)
+\end{minted}
+
+where \mintinline{c++}{L1 >>= R1} means ``bind the term R1 to the name L1''. This can be useful, for example, if we want to define something like:
+
+\begin{minted}{c++}
+    wf_def_bintree = Node <<= 
+            (Lhs >>= (Node | Leaf)) * (Rhs >>= (Node | Leaf))
+\end{minted}
+and we want to access the left or right tree at some point. If we have a \mintinline{c++}{node: Node}, we can access the left subtree with \mintinline{c++}{node / Lhs} if \mintinline{c++}{wf_def_bintree} is in scope (not sure at this point what ``in scope'' means here). 
+
+We cannot express things like \mintinline{c++}{Node <<= (Leaf | Node) * (Leaf | Node)} without explicitly naming the nodes (as in the example above). It is not clear how, or if, the left and right subtree would be named. We would need to investigate what this means as it is possible to define a wf-rule of the shape \mintinline{c++}{A <<= B * B}. 
+
+Additionally, it is not possible to define optional nodes or an arbitrary number of nodes (I have yet to convince myself of this).
+
+As of today, we believe the details regarding variable bindings in wf-definitions do not have to be modelled in the formalism. Variable bindings in wf-definitions and the ability to use them for retrieving parts of a term should not affect how we can use wf-definitions to check that a given tree is well-formed. Another reason to exclude this notion from the formal semantics of Trieste is that we decided that we first and foremost want to model the \emph{rewrite semantics}. Variable bindings in wf-definitions and using them to retrieve subterms can be considered merely a syntactic feature. 
 
 \section*{TODO}
 

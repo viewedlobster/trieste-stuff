@@ -47,4 +47,5 @@ semantics/*.aux
 semantics/*.fdb_latexmk
 semantics/*.log 
 semantics/*.fls
+semantics/*.pyg
 semantics/*.synctex.gz
