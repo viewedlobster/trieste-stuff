@@ -1,0 +1,10 @@
+void f(bool x, int y = 0){
+    int y = 0;
+    if (x) {
+        y = 100;
+    }
+    else {
+        y = 20;
+    }
+
+}
