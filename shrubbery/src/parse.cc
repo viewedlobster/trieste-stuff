@@ -4,7 +4,7 @@
 namespace shrubbery
 {
 
-  // Things from shrubbery notation that are not supported
+  // There are some Rhombus specific things that are not supported:
   // - Line- and Column-insensitivity with << and >>
   // - Continuing a line with backslash
   // - Group comments with #// //#
@@ -16,7 +16,6 @@ namespace shrubbery
   // - Single quotes
   //
   // Other TODOs:
-  // - Better parsing of atoms (identifiers vs operators)
   // - Better parsing of strings
   Parse parser()
   {
@@ -26,6 +25,8 @@ namespace shrubbery
     auto newline = std::make_shared<bool>(false);
 
     auto push_indentation = [fresh, indent](auto& m) {
+        if (!*fresh) return;
+
         *fresh = false;
         auto loc = m.match();
         if (!indent->empty()) {
@@ -33,13 +34,14 @@ namespace shrubbery
             auto last_col = last_loc.linecol().second;
             auto col = loc.linecol().second;
             if (col <= last_col) {
-              m.error("New indentation level must be larger than the previous");
+                m.error("New indentation level must be larger than the previous");
             }
         }
         indent->push_back(loc);
     };
 
     auto pop_indentation = [indent, fresh]() {
+        // If we have not set an indentation, don't pop
         if (*fresh) {
             *fresh = false;
             return;
@@ -47,7 +49,7 @@ namespace shrubbery
         indent->pop_back();
     };
 
-    auto match_indentation = [push_indentation, pop_indentation, newline, fresh, indent](auto& m) {
+    auto match_indentation = [pop_indentation, newline, fresh, indent](auto& m) {
         if (!*newline) {
             return true;
         }
@@ -89,9 +91,8 @@ namespace shrubbery
     };
 
     auto open_pair = [match_indentation, push_indentation, fresh](auto& m) {
-        if (*fresh) {
-            push_indentation(m);
-        }
+        push_indentation(m);
+
         if (match_indentation(m)) {
             *fresh = true;
             return true;
@@ -99,7 +100,9 @@ namespace shrubbery
         return false;
     };
 
-    auto close_all = [pop_indentation, indent](auto& m, std::initializer_list<Token> tokens) {
+    auto close_all = [pop_indentation, fresh, indent](auto& m, std::initializer_list<Token> tokens) {
+      *fresh = false;
+
       bool progress = true;
       while (progress) {
         progress = false;
@@ -116,14 +119,22 @@ namespace shrubbery
       }
     };
 
-    auto close_pair = [close_all, match_indentation, fresh, newline, indent](auto &m) {
-        if (!*fresh) {
-            indent->pop_back();
-        }
+    auto close_pair = [close_all, match_indentation, pop_indentation, newline, indent](auto &m) {
+        pop_indentation();
 
         match_indentation(m);
         close_all(m, {Block, Alt, Semi});
         m.term({Comma});
+    };
+
+    auto add_atom = [match_indentation, push_indentation, fresh, newline](auto &m) {
+        if (*newline)
+            m.term();
+
+        push_indentation(m);
+
+        if (match_indentation(m))
+            m.add(Atom);
     };
 
     p("start",
@@ -138,55 +149,36 @@ namespace shrubbery
         // String literals
         // TODO: Should probably be more clever... Modes?
         R"("[^"]*")" >>
-          [match_indentation, push_indentation, fresh, newline](auto& m) {
-              if (*newline)
-                  m.term({Semi});
-
-              if (*fresh)
-                  push_indentation(m);
-
-              if (match_indentation(m))
-                  m.add(Atom);
-          },
+          [add_atom](auto& m) { add_atom(m); },
 
         // Everything that is not a special character is an Atom
-        // TODO: Should probably separate into different classes of atoms
-        // TODO: Operators are special (can be continued indented on new line)
 
-        // [[:alpha:]][[:alnum:]]*
-        R"([^ \n,;()\[\]{}:|"]+|::+|\|\|+)" >>
-          [match_indentation, push_indentation, fresh, newline](auto& m) {
-              if (*newline)
-                  m.term({Semi});
+        // Identifiers
+        R"([[:alpha:]_][[:alnum:]_]*)" >>
+          [add_atom](auto& m) { add_atom(m); },
 
-              if (*fresh)
-                  push_indentation(m);
+        // Integers
+        // TODO: Floating-point numbers, etc.
+        "[[:digit:]]+" >>
+          [add_atom](auto& m) { add_atom(m); },
 
-              if (match_indentation(m))
-                  m.add(Atom);
+        // Operators
+        // TODO: Handle indentation
+        R"([!#$%&<>\^?|=+\-*/.:]*[!#$%&<>\^?=*]|[!#$%&<>\^?|=+\-*/.:]+[!#$%&<>\^?|=*]|\.+|\++|-+|::+)" >>
+          [add_atom](auto& m) {
+              // TODO: Handle indentation
+              add_atom(m);
           },
 
         // Opener-closer pairs
         R"((\())" >>
-          [open_pair](auto& m) {
-              if (open_pair(m)) {
-                m.push(Paren, 1);
-              }
-          },
+          [open_pair](auto& m) { if (open_pair(m)) m.push(Paren, 1); },
 
         R"((\[))" >>
-          [open_pair](auto& m) {
-              if (open_pair(m)) {
-                m.push(Bracket, 1);
-              }
-          },
+          [open_pair](auto& m) { if (open_pair(m)) m.push(Bracket, 1); },
 
         R"((\{))" >>
-          [open_pair](auto& m) {
-              if (open_pair(m)) {
-                m.push(Brace, 1);
-              }
-          },
+          [open_pair](auto& m) { if (open_pair(m)) m.push(Brace, 1); },
 
         R"(\))" >>
           [close_pair, fresh, indent](auto& m) {
@@ -214,23 +206,12 @@ namespace shrubbery
                   *newline = false;
               }
 
-              if (*fresh) {
-                *fresh = false;
-              }
-              // Handle empty blocks and alts
-              if (m.in(Block)) {
+              // Handle empty blocks
+              if (*fresh && m.in(Block))
                   m.pop(Block);
-              }
-              if (m.in(Alt)) {
-                  m.pop(Alt);
-              }
-
-              if (!m.in(Group)) {
-                  m.error("Comma does not separate a group");
-                  return;
-              }
 
               close_all(m, {Block, Alt, Semi});
+
               m.seq(Comma);
           },
 
@@ -242,15 +223,6 @@ namespace shrubbery
                   return;
               }
 
-              if (m.group_in(Paren) || m.group_in(Bracket) || m.group_in(Brace)) {
-                  m.error("Semicolons cannot separate groups in parentheses/brackets/braces. Use commas.");
-                  return;
-              }
-
-              if (!m.in(Group)) {
-                  m.error("Semicolon does not separate a group");
-                  return;
-              }
               m.seq(Semi);
           },
 

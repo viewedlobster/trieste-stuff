@@ -30,9 +30,21 @@ namespace shrubbery
         (In(Semi) * ((T(Group)[Group] << End))) >>
           [](Match& _) { return Seq << *_[Group]; },
 
+        // Commas must separate (non-empty) groups
+        (In(Comma) * (T(Group) << End)[Group]) >>
+          [](Match& _) { return err(_[Group], "Comma does not separate groups"); },
+
+        // Semi-colon must separate (non-empty) groups
+        (In(Semi) * (T(Group) << End)[Group]) >>
+          [](Match& _) { return err(_[Group], "Semi-colon does not separate groups"); },
+
         // Opener-closer pairs must have comma-separated groups
         (In(Paren, Brace, Bracket) * Any * Any)[Group] >>
           [](Match& _) { return err(_[Group], "Groups in parentheses/braces/brackets must be comma separated"); },
+
+        // Opener-closer pairs cannot have semicolon-separated groups
+        (In(Paren, Brace, Bracket) * T(Semi))[Semi] >>
+          [](Match& _) { return err(_[Semi], "Semicolons cannot separate groups in parentheses/brackets/braces. Use commas."); },
 
         // Opener-closer pairs may contain empty blocks
         (--(In(Paren, Brace, Bracket, Comma, File))) * ((T(Group) << ((!T(Block))++ * (T(Block)[Block] << End)))) >>
